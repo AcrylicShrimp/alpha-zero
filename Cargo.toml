@@ -1,0 +1,18 @@
+[package]
+name = "alpha-zero"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+num-traits = "0.2.17"
+serde = { version = "1.0", features = ["derive"] }
+tch = { version = "0.14", features = ["download-libtorch"] }
+
+[workspace]
+members = [
+  "./alpha-zero-game",
+  "./alpha-zero-mcts",
+  "./alpha-zero-nn",
+]
