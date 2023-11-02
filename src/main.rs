@@ -17,7 +17,7 @@ fn main() {
         Device::Cpu
     };
 
-    let mut trainer = Trainer::<game::games::TicTacToe>::new(TrainerConfig {
+    let mut trainer = Trainer::<game::games::Gomoku9>::new(TrainerConfig {
         device,
         mcts_executor_config: MCTSExecutorConfig { num_threads: None },
         nn_config: NNConfig {
@@ -27,10 +27,10 @@ fn main() {
             fc1_channels: 512,
         },
         nn_optimizer_config: NNOptimizerConfig { lr: 0.001f64 },
-        replay_buffer_size: 10000,
-        episodes: 10,
+        replay_buffer_size: 100000,
+        episodes: 100,
         mcts_count: 200,
-        batch_size: 10,
+        batch_size: 4,
         c_puct: 1f32,
         alpha: 0.03f32,
         epsilon: 0.25f32,

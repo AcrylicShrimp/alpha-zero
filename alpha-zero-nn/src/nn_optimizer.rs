@@ -2,7 +2,7 @@ use crate::NN;
 use game::Game;
 use tch::{
     nn::{Adam, Optimizer, OptimizerConfig, VarStore},
-    Kind, Reduction, TchError, Tensor,
+    Reduction, TchError, Tensor,
 };
 
 #[derive(Debug, Clone, PartialEq)]

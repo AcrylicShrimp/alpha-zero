@@ -119,25 +119,25 @@ where
         let mut loss_buffer = VecDeque::with_capacity(100);
 
         for iter in 0..iteration {
-            // if iter % 10 == 0 {
-            //     info!(
-            //         "(iter={}/{}) playing against a naive agent",
-            //         iter + 1,
-            //         iteration
-            //     );
+            if iter % 10 == 0 {
+                info!(
+                    "(iter={}/{}) playing against a naive agent",
+                    iter + 1,
+                    iteration
+                );
 
-            //     let (naive_agent_won, alpha_zero_agent_won, draw) =
-            //         self.play_against_naive_agent(10);
+                let (naive_agent_won, alpha_zero_agent_won, draw) =
+                    self.play_against_naive_agent(100);
 
-            //     info!(
-            //         "(iter={}/{}) naive agent won {} times, alpha zero agent won {} times, draw {} times",
-            //         iter + 1,
-            //         iteration,
-            //         naive_agent_won,
-            //         alpha_zero_agent_won,
-            //         draw
-            //     );
-            // }
+                info!(
+                    "(iter={}/{}) naive agent won {} times, alpha zero agent won {} times, draw {} times",
+                    iter + 1,
+                    iteration,
+                    naive_agent_won,
+                    alpha_zero_agent_won,
+                    draw
+                );
+            }
 
             info!("(iter={}/{}) self playing", iter + 1, iteration);
 
