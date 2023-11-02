@@ -62,11 +62,22 @@ pub enum Status {
     Draw,
 }
 
+impl Status {
+    pub fn is_turn(self, turn: Turn) -> bool {
+        match self {
+            Status::Ongoing => false,
+            Status::Player1Won => turn == Turn::Player1,
+            Status::Player2Won => turn == Turn::Player2,
+            Status::Draw => false,
+        }
+    }
+}
+
 /// Represents a game, especially a complete information, turn-based two-player zero-sum game such as chess or go.
 /// The board must be square and the size of the board must be known at compile time.
 pub trait Game
 where
-    Self: Send + SerdeGame,
+    Self: Clone + Send + SerdeGame,
 {
     /// Shape of the board, in form of `(BOARD_LAYER_COUNT, BOARD_SIZE_HEIGHT, BOARD_SIZE_WIDTH)`.
     /// Normally boards are square.
@@ -82,8 +93,8 @@ where
     fn turn(&self) -> Turn;
 
     /// Encode the current board state in form of a one-hot vector, in perspective of the current player (i.e. the player who is about to make a move).
-    /// Returned vector should have shape of `(BOARD_LAYER_COUNT, BOARD_SIZE, BOARD_SIZE)`.
-    fn board_state(&self) -> BitVec;
+    /// Returned vector should have shape of `BOARD_SHAPE`.
+    fn board_state(&self, flip_perspective: bool) -> BitVec;
 
     /// Return the number of possible actions in the current state.
     fn possible_action_count(&self) -> usize;

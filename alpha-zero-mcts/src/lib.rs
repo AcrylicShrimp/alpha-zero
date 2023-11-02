@@ -1,9 +1,11 @@
-mod node;
-mod node_allocator;
+pub mod node;
+pub mod node_allocator;
 
+use crate::{
+    node::{Node, NodePtr},
+    node_allocator::NodeAllocator,
+};
 use game::Game;
-use node::{Node, NodePtr};
-use node_allocator::NodeAllocator;
 use parking_lot::Mutex;
 use std::ptr::NonNull;
 
@@ -22,9 +24,9 @@ where
     G: Game,
 {
     /// Create a new MCTS instance.
-    pub fn new(p_s: Vec<f32>, game: G) -> Self {
+    pub fn new(p_s: Vec<f32>, game: G, z: Option<f32>) -> Self {
         let mut allocator = NodeAllocator::new();
-        let root = allocator.allocate(Node::new(None, None, 1f32, p_s, game));
+        let root = allocator.allocate(Node::new(None, None, 1f32, p_s, game, z));
 
         Self {
             root: NodePtr::new(root),
@@ -48,9 +50,10 @@ where
         node: &Node<G>,
         action: usize,
         p_s: Vec<f32>,
-        state: G,
+        game: G,
+        z: Option<f32>,
     ) -> Option<NodePtr<G>> {
-        node.expand(action, p_s, state, &mut self.allocator.lock())
+        node.expand(action, p_s, game, z, &mut self.allocator.lock())
     }
 
     /// Transition to the given child node. In other words, make the given child node the new root and drop all other branches.
@@ -111,7 +114,7 @@ mod tests {
             1f32 / game.possible_action_count() as f32;
             game::games::TicTacToe::POSSIBLE_ACTION_COUNT
         ];
-        let mut mcts = MCTS::new(p_s, game);
+        let mut mcts = MCTS::new(p_s, game, None);
 
         let child = {
             let node = mcts.select_leaf(|_, _| 0);
@@ -120,7 +123,9 @@ mod tests {
                 1f32 / game.possible_action_count() as f32;
                 game::games::TicTacToe::POSSIBLE_ACTION_COUNT
             ];
-            let child = mcts.expand(node, 0, p_s, mcts.root().game.clone()).unwrap();
+            let child = mcts
+                .expand(node, 0, p_s, mcts.root().game.clone(), None)
+                .unwrap();
 
             child
         };

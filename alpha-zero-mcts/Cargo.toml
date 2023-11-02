@@ -11,4 +11,3 @@ nn = { path = "../alpha-zero-nn" }
 
 atomic_float = { version = "0.1" }
 parking_lot = { version = "0.12", features = ["hardware-lock-elision"] }
-rand = { version = "0.8" }

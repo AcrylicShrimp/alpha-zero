@@ -5,7 +5,7 @@ use parking_lot::RwLock;
 use std::{
     ops::Deref,
     ptr::NonNull,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::{AtomicU32, Ordering},
 };
 
 /// Node in the MCTS tree.
@@ -22,15 +22,17 @@ where
     /// Prior probability of selecting this node.
     pub p_s_a: AtomicF32,
     /// Number of times edge s->a was visited.
-    pub n_s_a: AtomicU64,
+    pub n_s_a: AtomicU32,
     /// Total action value of edge s->a.
     pub w_s_a: AtomicF32,
     /// Maximum number of children.
     pub maximum_children: usize,
     /// Prior probabilities of all actions.
-    pub p_s: Vec<f32>,
+    pub p_s: RwLock<Vec<f32>>,
     /// Game state.
     pub game: G,
+    /// Reward of this node if it is a terminal node. `None` if it is not a terminal node.
+    pub z: Option<f32>,
 }
 
 impl<G> Node<G>
@@ -44,17 +46,19 @@ where
         p_s_a: f32,
         p_s: Vec<f32>,
         game: G,
+        z: Option<f32>,
     ) -> Self {
         Self {
             parent,
             action,
             children: RwLock::new(Vec::new()),
             p_s_a: AtomicF32::new(p_s_a),
-            n_s_a: AtomicU64::new(0),
+            n_s_a: AtomicU32::new(0),
             w_s_a: AtomicF32::new(0.0),
             maximum_children: game.possible_action_count(),
-            p_s,
+            p_s: RwLock::new(p_s),
             game,
+            z,
         }
     }
 
@@ -87,6 +91,7 @@ where
         action: usize,
         p_s: Vec<f32>,
         game: G,
+        z: Option<f32>,
         allocator: &mut NodeAllocator<Self>,
     ) -> Option<NodePtr<G>> {
         let mut children = self.children.write();
@@ -98,9 +103,10 @@ where
         let node = Self::new(
             Some(NodePtr::new(self.into())),
             Some(action),
-            self.p_s[action],
+            self.p_s.read()[action],
             p_s,
             game,
+            z,
         );
         let node_ptr = allocator.allocate(node);
         let child = NodePtr::new(node_ptr);

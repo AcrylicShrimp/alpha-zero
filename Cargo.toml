@@ -6,8 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-num-traits = "0.2.17"
-serde = { version = "1.0", features = ["derive"] }
+game = { path = "./alpha-zero-game" }
+nn = { path = "./alpha-zero-nn" }
+train = { path = "./alpha-zero-train" }
+
+env_logger = { version = "0.10" }
+log = { version = "0.4", features = ["release_max_level_info"] }
 tch = { version = "0.14", features = ["download-libtorch"] }
 
 [workspace]
@@ -15,4 +19,11 @@ members = [
   "./alpha-zero-game",
   "./alpha-zero-mcts",
   "./alpha-zero-nn",
+  "./alpha-zero-train",
 ]
+
+[profile.release]
+panic = "abort" # Strip expensive panic clean-up logic
+codegen-units = 1 # Compile crates one after another so the compiler can optimize better
+lto = true # Enables link to optimizations
+strip = true # Remove debug symbols

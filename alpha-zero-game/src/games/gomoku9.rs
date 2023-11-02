@@ -3,13 +3,13 @@ use bitvec::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct TicTacToe {
+pub struct Gomoku9 {
     turn: Turn,
-    board_player1: u16,
-    board_player2: u16,
+    board_player1: BitVec,
+    board_player2: BitVec,
 }
 
-impl TicTacToe {
+impl Gomoku9 {
     fn has_player1_stone_at(&self, index: usize) -> bool {
         (self.board_player1 >> index) & 1 == 1
     }
@@ -27,7 +27,7 @@ impl TicTacToe {
     }
 }
 
-impl Game for TicTacToe {
+impl Game for Gomoku9 {
     const BOARD_SHAPE: BoardShape = BoardShape::new(3, 3, 3);
 
     const POSSIBLE_ACTION_COUNT: usize = 9;
@@ -158,76 +158,4 @@ impl Game for TicTacToe {
     }
 }
 
-impl SerdeGame for TicTacToe {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_new_game() {
-        let game = TicTacToe::new();
-        assert_eq!(game.turn(), Turn::Player1);
-        assert_eq!(
-            game.board_state(false),
-            bitvec![
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_place_stone() {
-        let mut game = TicTacToe::new();
-
-        assert_eq!(game.turn(), Turn::Player1);
-        assert_eq!(game.take_action(0), Some(Status::Ongoing));
-        assert_eq!(game.board_state(true)[0], true);
-
-        assert_eq!(game.turn(), Turn::Player2);
-        assert_eq!(game.take_action(2), Some(Status::Ongoing));
-        assert_eq!(game.board_state(true)[2], true);
-    }
-
-    #[test]
-    fn test_invalid_action() {
-        let mut game = TicTacToe::new();
-        assert_eq!(game.take_action(0), Some(Status::Ongoing));
-        assert_eq!(game.take_action(0), None);
-    }
-
-    #[test]
-    fn test_player1_wins() {
-        let mut game = TicTacToe::new();
-        assert_eq!(game.take_action(0), Some(Status::Ongoing));
-        assert_eq!(game.take_action(3), Some(Status::Ongoing));
-        assert_eq!(game.take_action(1), Some(Status::Ongoing));
-        assert_eq!(game.take_action(4), Some(Status::Ongoing));
-        assert_eq!(game.take_action(2), Some(Status::Player1Won));
-    }
-
-    #[test]
-    fn test_player2_wins() {
-        let mut game = TicTacToe::new();
-        assert_eq!(game.take_action(0), Some(Status::Ongoing));
-        assert_eq!(game.take_action(3), Some(Status::Ongoing));
-        assert_eq!(game.take_action(1), Some(Status::Ongoing));
-        assert_eq!(game.take_action(4), Some(Status::Ongoing));
-        assert_eq!(game.take_action(6), Some(Status::Ongoing));
-        assert_eq!(game.take_action(5), Some(Status::Player2Won));
-    }
-
-    #[test]
-    fn test_draw() {
-        let mut game = TicTacToe::new();
-        assert_eq!(game.take_action(0), Some(Status::Ongoing));
-        assert_eq!(game.take_action(2), Some(Status::Ongoing));
-        assert_eq!(game.take_action(1), Some(Status::Ongoing));
-        assert_eq!(game.take_action(3), Some(Status::Ongoing));
-        assert_eq!(game.take_action(4), Some(Status::Ongoing));
-        assert_eq!(game.take_action(8), Some(Status::Ongoing));
-        assert_eq!(game.take_action(5), Some(Status::Ongoing));
-        assert_eq!(game.take_action(7), Some(Status::Ongoing));
-        assert_eq!(game.take_action(6), Some(Status::Draw));
-    }
-}
+impl SerdeGame for Gomoku9 {}

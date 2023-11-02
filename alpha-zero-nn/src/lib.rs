@@ -1,3 +1,5 @@
+pub mod nn_optimizer;
+
 use game::Game;
 use std::{borrow::Borrow, fmt::Debug, marker::PhantomData, ops::Add};
 use tch::{
@@ -105,12 +107,42 @@ where
             .apply(&self.fc1)
             .relu();
 
-        let value = xs.apply(&self.value_head).tanh();
-        let policy = xs
+        let value = xs.apply(&self.value_head).view([-1, 1]).tanh();
+        let mut policy = xs
             .apply(&self.policy_head)
-            .log_softmax(-1, tch::Kind::Float);
+            .view([-1, G::POSSIBLE_ACTION_COUNT as i64]);
+
+        if !train {
+            policy = policy.softmax(-1, tch::Kind::Float);
+        }
 
         (value, policy)
+    }
+
+    pub fn forward_pi(&self, xs: &Tensor) -> Tensor {
+        let layer_count = G::BOARD_SHAPE.layer_count as i64;
+        let height = G::BOARD_SHAPE.height as i64;
+        let width = G::BOARD_SHAPE.width as i64;
+
+        let mut xs = xs
+            .view([-1, layer_count, height, width])
+            .apply(&self.match_channel_conv)
+            .relu();
+
+        for residual in &self.residual_blocks {
+            xs = xs.apply_t(residual, false);
+        }
+
+        let flatten_size = self.config.residual_block_channels as i64 * height * width;
+
+        xs = xs
+            .view([-1, flatten_size])
+            .apply(&self.fc0)
+            .relu()
+            .apply(&self.fc1)
+            .relu();
+
+        xs.apply(&self.policy_head).softmax(-1, tch::Kind::Float)
     }
 }
 
@@ -129,6 +161,9 @@ where
             .finish()
     }
 }
+
+unsafe impl<G> Send for NN<G> where G: Game {}
+unsafe impl<G> Sync for NN<G> where G: Game {}
 
 #[derive(Debug)]
 struct ResidualBlock {
