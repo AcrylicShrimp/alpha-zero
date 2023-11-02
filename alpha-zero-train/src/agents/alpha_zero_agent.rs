@@ -1,15 +1,14 @@
+use crate::{
+    agent::Agent,
+    encode::{encode_nn_input, EncodingPerspective},
+};
 use game::{Game, Status};
-use log::warn;
+use log::{trace, warn};
 use mcts::MCTS;
 use nn::NN;
 use rand::{distributions::WeightedIndex, prelude::Distribution};
 use std::sync::atomic::Ordering;
 use tch::Device;
-
-use crate::{
-    agent::Agent,
-    encode::{encode_nn_input, EncodingPerspective},
-};
 
 // TODO: split this into a separate crate
 
@@ -23,30 +22,38 @@ pub enum ActionSamplingMode {
 }
 
 /// An agent that uses the AlphaZero algorithm.
-pub struct AlphaZeroAgent<G>
+pub struct AlphaZeroAgent<'n, G>
 where
     G: Game,
 {
+    device: Device,
+    nn: &'n NN<G>,
     mcts: MCTS<G>,
 }
 
-impl<G> AlphaZeroAgent<G>
+impl<'n, G> AlphaZeroAgent<'n, G>
 where
     G: Game,
 {
     /// Creates a new agent.
-    pub fn new() -> Self {
+    pub fn new(device: Device, nn: &'n NN<G>) -> Self {
         let game = G::new();
-
-        let mut sum = 0f32;
-        let mut p_s = vec![0f32; G::POSSIBLE_ACTION_COUNT];
+        let input = encode_nn_input(
+            device,
+            1,
+            EncodingPerspective::Player,
+            std::iter::once(&game),
+        );
+        let p_s = nn.forward_pi(&input).to(Device::Cpu);
+        let mut p_s = Vec::<f32>::try_from(p_s.view([-1])).unwrap();
 
         for action in 0..G::POSSIBLE_ACTION_COUNT {
-            if game.is_action_available(action) {
-                sum += 1f32;
-                p_s[action] = 1f32;
+            if !game.is_action_available(action) {
+                p_s[action] = 0f32;
             }
         }
+
+        let sum = p_s.iter().sum::<f32>();
 
         if f32::EPSILON < sum {
             let sum_inv = sum.recip();
@@ -62,6 +69,8 @@ where
 
         Self {
             // assume that the game is not over at the beginning
+            device,
+            nn,
             mcts: MCTS::new(p_s, game, None),
         }
     }
@@ -134,6 +143,12 @@ where
 
                 for action in 0..G::POSSIBLE_ACTION_COUNT {
                     let prob = policy[action];
+
+                    if prob <= f32::EPSILON {
+                        // TODO: filter out the action instead of ignoring it
+                        continue;
+                    }
+
                     let heated = (prob * temperature_inv).exp();
                     sum += heated;
                     heated_policy[action] = heated;
@@ -156,9 +171,55 @@ where
             }
         }
     }
+}
 
-    /// Ensures that the action exists in the MCTS tree.
-    pub fn ensure_action_exists(&mut self, device: Device, nn: &NN<G>, action: usize) {
+impl<'n, G> Agent<G> for AlphaZeroAgent<'n, G>
+where
+    G: Game,
+{
+    fn select_action(&mut self) -> Option<usize> {
+        self.sample_action_from_policy(ActionSamplingMode::Best)
+            .map(|(action, _)| action)
+    }
+
+    fn take_action(&mut self, action: usize) -> Option<Status> {
+        if self.mcts.root().z.is_some() {
+            trace!("the game is over; ignoring the action");
+            return None;
+        }
+
+        let children_index = {
+            let children = self.mcts.root().children.read();
+            let children_index = children
+                .iter()
+                .enumerate()
+                .find(|(_, &child)| child.action == Some(action))
+                .map(|(index, _)| index);
+
+            if children_index.is_none() {
+                trace!(
+                    "action={}, children={:?}",
+                    action,
+                    children
+                        .iter()
+                        .map(|&child| child.action.unwrap())
+                        .collect::<Vec<_>>()
+                );
+                trace!("mcts is not aware of the action; ignoring the action");
+            }
+
+            children_index?
+        };
+
+        let mut game = self.mcts.root().game.clone();
+        let status = game.take_action(action)?;
+
+        self.mcts.transition(children_index);
+
+        Some(status)
+    }
+
+    fn ensure_action_exists(&mut self, action: usize) {
         let mut game = self.mcts.root().game.clone();
         let turn = game.turn();
         let status = if let Some(status) = game.take_action(action) {
@@ -168,12 +229,12 @@ where
         };
 
         let input = encode_nn_input(
-            device,
+            self.device,
             1,
             EncodingPerspective::Player,
             std::iter::once(&game),
         );
-        let p_s = nn.forward_pi(&input).to(Device::Cpu);
+        let p_s = self.nn.forward_pi(&input).to(Device::Cpu);
         let mut p_s = Vec::<f32>::try_from(p_s.view([-1])).unwrap();
 
         for action in 0..G::POSSIBLE_ACTION_COUNT {
@@ -201,38 +262,5 @@ where
         };
 
         self.mcts.expand(self.mcts.root(), action, p_s, game, z);
-    }
-}
-
-impl<G> Agent<G> for AlphaZeroAgent<G>
-where
-    G: Game,
-{
-    fn select_action(&mut self) -> Option<usize> {
-        self.sample_action_from_policy(ActionSamplingMode::Best)
-            .map(|(action, _)| action)
-    }
-
-    fn take_action(&mut self, action: usize) -> Option<Status> {
-        if self.mcts.root().z.is_some() {
-            return None;
-        }
-
-        let children_index = {
-            let children = self.mcts.root().children.read();
-
-            children
-                .iter()
-                .enumerate()
-                .find(|(_, &child)| child.action == Some(action))
-                .map(|(index, _)| index)?
-        };
-
-        let mut game = self.mcts.root().game.clone();
-        let status = game.take_action(action)?;
-
-        self.mcts.transition(children_index);
-
-        Some(status)
     }
 }

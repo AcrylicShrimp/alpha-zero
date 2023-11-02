@@ -3,6 +3,7 @@ use crate::{
     encode::{encode_nn_input, EncodingPerspective},
 };
 use game::{Game, Status};
+use log::trace;
 use mcts::node::{Node, NodePtr};
 use nn::NN;
 use rand::{seq::IteratorRandom, thread_rng};
@@ -79,6 +80,8 @@ impl ParallelMCTSExecutor {
                 if requests.is_empty() {
                     continue;
                 }
+
+                trace!("requests.len()={}", requests.len());
 
                 let input = encode_nn_input(
                     device,

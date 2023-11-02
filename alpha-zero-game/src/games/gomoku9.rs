@@ -5,38 +5,85 @@ use bitvec::prelude::*;
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Gomoku9 {
     turn: Turn,
+    possible_action_count: usize,
     board_player1: BitVec,
     board_player2: BitVec,
 }
 
 impl Gomoku9 {
+    pub const SERIAL_STONE_COUNT: usize = 5;
+
     fn has_player1_stone_at(&self, index: usize) -> bool {
-        (self.board_player1 >> index) & 1 == 1
+        self.board_player1
+            .get(index)
+            .map(|occupied| *occupied)
+            .unwrap_or(false)
     }
 
     fn has_player2_stone_at(&self, index: usize) -> bool {
-        (self.board_player2 >> index) & 1 == 1
+        self.board_player2
+            .get(index)
+            .map(|occupied| *occupied)
+            .unwrap_or(false)
     }
 
     fn place_player1_stone_at(&mut self, index: usize) {
-        self.board_player1 |= 1 << index;
+        self.board_player1.set(index, true);
+        self.possible_action_count -= 1;
     }
 
     fn place_player2_stone_at(&mut self, index: usize) {
-        self.board_player2 |= 1 << index;
+        self.board_player2.set(index, true);
+        self.possible_action_count -= 1;
+    }
+
+    fn count_serial_stones(&self, turn: Turn, index: usize, offset: &[(isize, isize)]) -> usize {
+        let board = match turn {
+            Turn::Player1 => &self.board_player1,
+            Turn::Player2 => &self.board_player2,
+        };
+
+        let board_shape = Self::BOARD_SHAPE;
+        let height = board_shape.height as isize;
+        let width = board_shape.width as isize;
+
+        let x = (index as isize % width) as isize;
+        let y = (index as isize / width) as isize;
+        let mut count = 0;
+
+        for &(offset_x, offset_y) in offset {
+            let x = x + offset_x;
+            let y = y + offset_y;
+            if x < 0 || width <= x || y < 0 || height <= y {
+                break;
+            }
+
+            if !board
+                .get((y * width + x) as usize)
+                .map(|occupied| *occupied)
+                .unwrap_or(false)
+            {
+                break;
+            }
+
+            count += 1;
+        }
+
+        count
     }
 }
 
 impl Game for Gomoku9 {
-    const BOARD_SHAPE: BoardShape = BoardShape::new(3, 3, 3);
+    const BOARD_SHAPE: BoardShape = BoardShape::new(3, 9, 9);
 
-    const POSSIBLE_ACTION_COUNT: usize = 9;
+    const POSSIBLE_ACTION_COUNT: usize = 81;
 
     fn new() -> Self {
         Self {
             turn: Turn::Player1,
-            board_player1: 0,
-            board_player2: 0,
+            possible_action_count: Self::POSSIBLE_ACTION_COUNT,
+            board_player1: BitVec::repeat(false, Self::BOARD_SHAPE.single_layer_size()),
+            board_player2: BitVec::repeat(false, Self::BOARD_SHAPE.single_layer_size()),
         }
     }
 
@@ -79,15 +126,7 @@ impl Game for Gomoku9 {
     }
 
     fn possible_action_count(&self) -> usize {
-        let mut count = 0;
-
-        for action in 0..Self::POSSIBLE_ACTION_COUNT {
-            if self.is_action_available(action) {
-                count += 1;
-            }
-        }
-
-        count
+        self.possible_action_count
     }
 
     fn possible_actions(&self) -> BitVec {
@@ -111,45 +150,69 @@ impl Game for Gomoku9 {
             return None;
         }
 
-        let status = match self.turn {
+        match self.turn {
             Turn::Player1 => {
                 self.place_player1_stone_at(action);
-
-                if self.board_player1 & 0b111 == 0b111
-                    || self.board_player1 & 0b111_000 == 0b111_000
-                    || self.board_player1 & 0b111_000_000 == 0b111_000_000
-                    || self.board_player1 & 0b100_100_100 == 0b100_100_100
-                    || self.board_player1 & 0b010_010_010 == 0b010_010_010
-                    || self.board_player1 & 0b001_001_001 == 0b001_001_001
-                    || self.board_player1 & 0b100_010_001 == 0b100_010_001
-                    || self.board_player1 & 0b001_010_100 == 0b001_010_100
-                {
-                    Status::Player1Won
-                } else if self.board_player1 | self.board_player2 == 0b111_111_111 {
-                    Status::Draw
-                } else {
-                    Status::Ongoing
-                }
             }
             Turn::Player2 => {
                 self.place_player2_stone_at(action);
-
-                if self.board_player2 & 0b111 == 0b111
-                    || self.board_player2 & 0b111_000 == 0b111_000
-                    || self.board_player2 & 0b111_000_000 == 0b111_000_000
-                    || self.board_player2 & 0b100_100_100 == 0b100_100_100
-                    || self.board_player2 & 0b010_010_010 == 0b010_010_010
-                    || self.board_player2 & 0b001_001_001 == 0b001_001_001
-                    || self.board_player2 & 0b100_010_001 == 0b100_010_001
-                    || self.board_player2 & 0b001_010_100 == 0b001_010_100
-                {
-                    Status::Player2Won
-                } else if self.board_player1 | self.board_player2 == 0b111_111_111 {
-                    Status::Draw
-                } else {
-                    Status::Ongoing
-                }
             }
+        };
+
+        let horizontal_count =
+            1 + self.count_serial_stones(
+                self.turn,
+                action,
+                &[(-1, 0), (-2, 0), (-3, 0), (-4, 0), (-5, 0)],
+            ) + self.count_serial_stones(
+                self.turn,
+                action,
+                &[(1, 0), (2, 0), (3, 0), (4, 0), (5, 0)],
+            );
+        let vertical_count =
+            1 + self.count_serial_stones(
+                self.turn,
+                action,
+                &[(0, -1), (0, -2), (0, -3), (0, -4), (0, -5)],
+            ) + self.count_serial_stones(
+                self.turn,
+                action,
+                &[(0, 1), (0, 2), (0, 3), (0, 4), (0, 5)],
+            );
+        let diagonal_lt_rb_count =
+            1 + self.count_serial_stones(
+                self.turn,
+                action,
+                &[(-1, -1), (-2, -2), (-3, -3), (-4, -4), (-5, -5)],
+            ) + self.count_serial_stones(
+                self.turn,
+                action,
+                &[(1, 1), (2, 2), (3, 3), (4, 4), (5, 5)],
+            );
+        let diagonal_lb_rt_count =
+            1 + self.count_serial_stones(
+                self.turn,
+                action,
+                &[(-1, 1), (-2, 2), (-3, 3), (-4, 4), (-5, 5)],
+            ) + self.count_serial_stones(
+                self.turn,
+                action,
+                &[(1, -1), (2, -2), (3, -3), (4, -4), (5, -5)],
+            );
+
+        let status = if horizontal_count == Self::SERIAL_STONE_COUNT
+            || vertical_count == Self::SERIAL_STONE_COUNT
+            || diagonal_lt_rb_count == Self::SERIAL_STONE_COUNT
+            || diagonal_lb_rt_count == Self::SERIAL_STONE_COUNT
+        {
+            match self.turn {
+                Turn::Player1 => Status::Player1Won,
+                Turn::Player2 => Status::Player2Won,
+            }
+        } else if self.possible_action_count == 0 {
+            Status::Draw
+        } else {
+            Status::Ongoing
         };
 
         self.turn = self.turn.opposite();

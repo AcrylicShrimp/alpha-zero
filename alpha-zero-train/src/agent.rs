@@ -15,6 +15,9 @@ where
     /// - The game is already finished.
     /// - The action is not applicable due to the internal state of the agent. (e.g. MCTS in the AlphaZero agent is not ready yet.)
     ///
-    /// If you eliminate the last case, refer [crate::agents::AlphaZeroAgent].
+    /// If you eliminate the last case, call `ensure_action_exists` before calling this method.
     fn take_action(&mut self, action: usize) -> Option<Status>;
+
+    /// Ensures that the action exists in the internal state of the agent.
+    fn ensure_action_exists(&mut self, action: usize);
 }

@@ -9,8 +9,10 @@ use crate::{
     agents::{ActionSamplingMode, AlphaZeroAgent},
     encode::{encode_nn_input, encode_nn_targets, EncodingPerspective},
 };
+use agents::NaiveAgent;
 use game::{Game, Status, Turn};
-use log::info;
+use indicatif::{ProgressBar, ProgressStyle};
+use log::{info, trace};
 use nn::{
     nn_optimizer::{NNOptimizer, NNOptimizerConfig},
     NNConfig, NN,
@@ -110,6 +112,104 @@ where
         &self.nn_optimizer.nn()
     }
 
+    /// Plays the neural network against a naive agent to test the performance.
+    fn play_against_naive_agent(&self, match_count: usize) -> (u32, u32, u32) {
+        let mut player1_won = 0;
+        let mut player2_won = 0;
+        let mut draw = 0;
+        let mut agents_1 = Vec::with_capacity(match_count);
+        let mut agents_2 = Vec::with_capacity(match_count);
+
+        let progress_bar = ProgressBar::new(match_count as u64);
+        progress_bar.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.white} [{bar:40.green/white}] {pos:>7}/{len:7}")
+                .unwrap()
+                .progress_chars("#>-"),
+        );
+        progress_bar.tick();
+
+        for _ in 0..match_count {
+            agents_1.push(NaiveAgent::<G>::new());
+            agents_2.push(AlphaZeroAgent::<G>::new(
+                self.config.device,
+                self.nn_optimizer.nn(),
+            ));
+        }
+
+        while !agents_1.is_empty() {
+            let turn = agents_1[0].game().turn();
+
+            trace!("turn={:?}", turn);
+
+            if turn == Turn::Player2 {
+                self.mcts_executor.execute(
+                    self.config.device,
+                    self.config.mcts_count,
+                    self.config.batch_size,
+                    self.config.c_puct,
+                    self.config.alpha,
+                    self.config.epsilon,
+                    self.nn_optimizer.nn(),
+                    &agents_2,
+                );
+                progress_bar.tick();
+            }
+
+            let mut index = 0;
+
+            while index < agents_1.len() {
+                let (agent, opponent_agent) = match turn {
+                    Turn::Player1 => (
+                        &mut agents_1[index] as &mut dyn Agent<G>,
+                        &mut agents_2[index] as &mut dyn Agent<G>,
+                    ),
+                    Turn::Player2 => (
+                        &mut agents_2[index] as &mut dyn Agent<G>,
+                        &mut agents_1[index] as &mut dyn Agent<G>,
+                    ),
+                };
+
+                let action = agent.select_action().unwrap();
+                let status = agent.take_action(action).unwrap();
+
+                opponent_agent.ensure_action_exists(action);
+                opponent_agent.take_action(action);
+
+                let is_terminal = match status {
+                    Status::Ongoing => false,
+                    Status::Player1Won => {
+                        player1_won += 1;
+                        true
+                    }
+                    Status::Player2Won => {
+                        player2_won += 1;
+                        true
+                    }
+                    Status::Draw => {
+                        draw += 1;
+                        true
+                    }
+                };
+
+                if is_terminal {
+                    agents_1.swap_remove(index);
+                    agents_2.swap_remove(index);
+
+                    progress_bar.inc(1);
+
+                    continue;
+                }
+
+                index += 1;
+            }
+        }
+
+        progress_bar.finish();
+
+        (player1_won, player2_won, draw)
+    }
+
     /// Trains the neural network.
     pub fn train(&mut self, iteration: usize) {
         let mut rng = thread_rng();
@@ -117,6 +217,26 @@ where
         let mut loss_buffer = VecDeque::with_capacity(100);
 
         for iter in 0..iteration {
+            if iter % 10 == 0 {
+                info!(
+                    "(iter={}/{}) playing against a naive agent",
+                    iter + 1,
+                    iteration
+                );
+
+                let (naive_agent_won, alpha_zero_agent_won, draw) =
+                    self.play_against_naive_agent(100);
+
+                info!(
+                    "(iter={}/{}) naive agent won {} times, alpha zero agent won {} times, draw {} times",
+                    iter + 1,
+                    iteration,
+                    naive_agent_won,
+                    alpha_zero_agent_won,
+                    draw
+                );
+            }
+
             info!("(iter={}/{}) self playing", iter + 1, iteration);
 
             replay_buffer.extend(self.self_play(self.config.episodes));
@@ -126,6 +246,15 @@ where
             }
 
             info!("(iter={}/{}) training", iter + 1, iteration);
+
+            let progress_bar = ProgressBar::new(self.config.parameter_update_count as u64);
+            progress_bar.set_style(
+                ProgressStyle::default_bar()
+                    .template("{spinner:.white} [{bar:40.green/white}] {pos:>7}/{len:7}")
+                    .unwrap()
+                    .progress_chars("#>-"),
+            );
+            progress_bar.tick();
 
             for _ in 0..self.config.parameter_update_count {
                 let trajectories = replay_buffer
@@ -138,7 +267,11 @@ where
                 while 100 < loss_buffer.len() {
                     loss_buffer.pop_front();
                 }
+
+                progress_bar.inc(1);
             }
+
+            progress_bar.finish();
 
             let (loss, v_loss, pi_loss) = (
                 loss_buffer.iter().cloned().map(|l| l.0).sum::<f32>() / loss_buffer.len() as f32,
@@ -165,9 +298,24 @@ where
         let mut trajectories_set = Vec::with_capacity(episodes);
         let mut trajectories_indices = Vec::from_iter(0..episodes);
 
+        let progress_bar = ProgressBar::new(episodes as u64);
+        progress_bar.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.white} [{bar:40.green/white}] {pos:>7}/{len:7}")
+                .unwrap()
+                .progress_chars("#>-"),
+        );
+        progress_bar.tick();
+
         for _ in 0..episodes {
-            agents_1.push(AlphaZeroAgent::<G>::new());
-            agents_2.push(AlphaZeroAgent::<G>::new());
+            agents_1.push(AlphaZeroAgent::<G>::new(
+                self.config.device,
+                self.nn_optimizer.nn(),
+            ));
+            agents_2.push(AlphaZeroAgent::<G>::new(
+                self.config.device,
+                self.nn_optimizer.nn(),
+            ));
             trajectories_set.push(Vec::with_capacity(64));
         }
 
@@ -201,6 +349,8 @@ where
                 }
             }
 
+            progress_bar.tick();
+
             let mut index = 0;
             let (agents, opponent_agents) = match turn {
                 Turn::Player1 => (&mut agents_1, &mut agents_2),
@@ -231,11 +381,7 @@ where
                     Status::Draw => Some(0f32),
                 };
 
-                opponent_agent.ensure_action_exists(
-                    self.config.device,
-                    self.nn_optimizer.nn(),
-                    action,
-                );
+                opponent_agent.ensure_action_exists(action);
                 opponent_agent.take_action(action);
 
                 let trajectories = &mut trajectories_set[trajectories_indices[index]];
@@ -249,6 +395,8 @@ where
                     agents.swap_remove(index);
                     opponent_agents.swap_remove(index);
                     trajectories_indices.swap_remove(index);
+
+                    progress_bar.inc(1);
 
                     continue;
                 }
@@ -267,6 +415,8 @@ where
 
             // TODO: augment the trajectories
         }
+
+        progress_bar.finish();
 
         trajectories_set.into_iter().flatten().collect()
     }
