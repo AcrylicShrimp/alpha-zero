@@ -44,20 +44,28 @@ where
         z_target: &Tensor,
         policy_target: &Tensor,
     ) -> (f32, f32, f32) {
+        let z_target = z_target.view([-1, 1]);
+        let policy_target = policy_target.view([-1, G::POSSIBLE_ACTION_COUNT as i64]);
+
         let (v, pi) = self.nn.forward(input, true);
-        let v_loss = v.mse_loss(&z_target.view([-1, 1]), Reduction::Mean);
-        let pi_loss = (-policy_target.view([-1, G::POSSIBLE_ACTION_COUNT as i64])
-            * pi.log_softmax(-1, Kind::Float))
-        .mean(Kind::Float);
+
+        #[cfg(debug_assertions)]
+        {
+            println!("pi={:?}", Vec::<f32>::try_from(pi.view([-1])).unwrap());
+        }
+
+        let v_loss = v.mse_loss(&z_target, Reduction::Mean);
+        let pi_loss =
+            pi.cross_entropy_loss::<&Tensor>(&policy_target, None, Reduction::Mean, -100, 0.0);
         let loss = &v_loss + &pi_loss;
 
         loss.backward();
         self.optimizer.step();
 
         (
-            loss.double_value(&[]) as f32,
-            v_loss.double_value(&[]) as f32,
-            pi_loss.double_value(&[]) as f32,
+            f32::try_from(loss).unwrap(),
+            f32::try_from(v_loss).unwrap(),
+            f32::try_from(pi_loss).unwrap(),
         )
     }
 }

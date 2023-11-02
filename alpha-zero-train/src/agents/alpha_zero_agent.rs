@@ -128,6 +128,8 @@ where
     pub fn sample_action_from_policy(&self, mode: ActionSamplingMode) -> Option<(usize, Vec<f32>)> {
         let policy = self.compute_mcts_policy()?;
 
+        trace!("policy={:?}", policy);
+
         match mode {
             ActionSamplingMode::Best => policy
                 .iter()

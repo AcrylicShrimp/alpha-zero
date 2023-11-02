@@ -107,10 +107,8 @@ where
             .apply(&self.fc1)
             .relu();
 
-        let value = xs.apply(&self.value_head).view([-1, 1]).tanh();
-        let mut policy = xs
-            .apply(&self.policy_head)
-            .view([-1, G::POSSIBLE_ACTION_COUNT as i64]);
+        let value = xs.apply(&self.value_head).tanh();
+        let mut policy = xs.apply(&self.policy_head);
 
         if !train {
             policy = policy.softmax(-1, tch::Kind::Float);

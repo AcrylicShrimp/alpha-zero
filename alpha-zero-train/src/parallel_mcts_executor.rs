@@ -203,6 +203,7 @@ where
         });
 
         if let Some(z) = node.z {
+            trace!("the game is over; propagating z={}", z);
             node.propagate(z);
             continue;
         }

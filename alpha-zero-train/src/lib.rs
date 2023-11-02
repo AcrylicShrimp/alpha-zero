@@ -112,6 +112,90 @@ where
         &self.nn_optimizer.nn()
     }
 
+    /// Trains the neural network.
+    pub fn train(&mut self, iteration: usize) {
+        let mut rng = thread_rng();
+        let mut replay_buffer = VecDeque::with_capacity(self.config.replay_buffer_size);
+        let mut loss_buffer = VecDeque::with_capacity(100);
+
+        for iter in 0..iteration {
+            // if iter % 10 == 0 {
+            //     info!(
+            //         "(iter={}/{}) playing against a naive agent",
+            //         iter + 1,
+            //         iteration
+            //     );
+
+            //     let (naive_agent_won, alpha_zero_agent_won, draw) =
+            //         self.play_against_naive_agent(10);
+
+            //     info!(
+            //         "(iter={}/{}) naive agent won {} times, alpha zero agent won {} times, draw {} times",
+            //         iter + 1,
+            //         iteration,
+            //         naive_agent_won,
+            //         alpha_zero_agent_won,
+            //         draw
+            //     );
+            // }
+
+            info!("(iter={}/{}) self playing", iter + 1, iteration);
+
+            let trajectories = self.self_play(self.config.episodes);
+
+            trace!("trajectories={:?}", trajectories);
+
+            replay_buffer.extend(trajectories);
+
+            while self.config.replay_buffer_size < replay_buffer.len() {
+                replay_buffer.pop_front();
+            }
+
+            info!("(iter={}/{}) training", iter + 1, iteration);
+
+            let progress_bar = ProgressBar::new(self.config.parameter_update_count as u64);
+            progress_bar.set_style(
+                ProgressStyle::default_bar()
+                    .template("{spinner:.white} [{bar:40.green/white}] {pos:>7}/{len:7}")
+                    .unwrap()
+                    .progress_chars("#>-"),
+            );
+            progress_bar.tick();
+
+            for _ in 0..self.config.parameter_update_count {
+                let trajectories = replay_buffer
+                    .iter()
+                    .choose_multiple(&mut rng, self.config.parameter_update_batch_size);
+                let losses = self.train_nn(trajectories.as_slice());
+
+                loss_buffer.push_back(losses);
+
+                while 100 < loss_buffer.len() {
+                    loss_buffer.pop_front();
+                }
+
+                progress_bar.inc(1);
+            }
+
+            progress_bar.finish();
+
+            let (loss, v_loss, pi_loss) = (
+                loss_buffer.iter().cloned().map(|l| l.0).sum::<f32>() / loss_buffer.len() as f32,
+                loss_buffer.iter().cloned().map(|l| l.1).sum::<f32>() / loss_buffer.len() as f32,
+                loss_buffer.iter().cloned().map(|l| l.2).sum::<f32>() / loss_buffer.len() as f32,
+            );
+
+            info!(
+                "(iter={}/{}) loss={:.4} (v_loss={:.4}, pi_loss={:.4})",
+                iter + 1,
+                iteration,
+                loss,
+                v_loss,
+                pi_loss
+            );
+        }
+    }
+
     /// Plays the neural network against a naive agent to test the performance.
     fn play_against_naive_agent(&self, match_count: usize) -> (u32, u32, u32) {
         let mut player1_won = 0;
@@ -210,86 +294,6 @@ where
         (player1_won, player2_won, draw)
     }
 
-    /// Trains the neural network.
-    pub fn train(&mut self, iteration: usize) {
-        let mut rng = thread_rng();
-        let mut replay_buffer = VecDeque::with_capacity(self.config.replay_buffer_size);
-        let mut loss_buffer = VecDeque::with_capacity(100);
-
-        for iter in 0..iteration {
-            if iter % 10 == 0 {
-                info!(
-                    "(iter={}/{}) playing against a naive agent",
-                    iter + 1,
-                    iteration
-                );
-
-                let (naive_agent_won, alpha_zero_agent_won, draw) =
-                    self.play_against_naive_agent(100);
-
-                info!(
-                    "(iter={}/{}) naive agent won {} times, alpha zero agent won {} times, draw {} times",
-                    iter + 1,
-                    iteration,
-                    naive_agent_won,
-                    alpha_zero_agent_won,
-                    draw
-                );
-            }
-
-            info!("(iter={}/{}) self playing", iter + 1, iteration);
-
-            replay_buffer.extend(self.self_play(self.config.episodes));
-
-            while self.config.replay_buffer_size < replay_buffer.len() {
-                replay_buffer.pop_front();
-            }
-
-            info!("(iter={}/{}) training", iter + 1, iteration);
-
-            let progress_bar = ProgressBar::new(self.config.parameter_update_count as u64);
-            progress_bar.set_style(
-                ProgressStyle::default_bar()
-                    .template("{spinner:.white} [{bar:40.green/white}] {pos:>7}/{len:7}")
-                    .unwrap()
-                    .progress_chars("#>-"),
-            );
-            progress_bar.tick();
-
-            for _ in 0..self.config.parameter_update_count {
-                let trajectories = replay_buffer
-                    .iter()
-                    .choose_multiple(&mut rng, self.config.parameter_update_batch_size);
-                let losses = self.train_nn(trajectories.as_slice());
-
-                loss_buffer.push_back(losses);
-
-                while 100 < loss_buffer.len() {
-                    loss_buffer.pop_front();
-                }
-
-                progress_bar.inc(1);
-            }
-
-            progress_bar.finish();
-
-            let (loss, v_loss, pi_loss) = (
-                loss_buffer.iter().cloned().map(|l| l.0).sum::<f32>() / loss_buffer.len() as f32,
-                loss_buffer.iter().cloned().map(|l| l.1).sum::<f32>() / loss_buffer.len() as f32,
-                loss_buffer.iter().cloned().map(|l| l.2).sum::<f32>() / loss_buffer.len() as f32,
-            );
-
-            info!(
-                "(iter={}/{}) loss={:.4} (v_loss={:.4}, pi_loss={:.4})",
-                iter + 1,
-                iteration,
-                loss,
-                v_loss,
-                pi_loss
-            );
-        }
-    }
-
     /// Plays the neural network against itself and collects the trajectories.
     fn self_play(&self, episodes: usize) -> Vec<Trajectory<G>> {
         let mut turn_count = 0;
@@ -361,6 +365,36 @@ where
                 let agent = &mut agents[index];
                 let opponent_agent = &mut opponent_agents[index];
 
+                #[cfg(debug_assertions)]
+                {
+                    let root_n_s_a = agent
+                        .mcts()
+                        .root()
+                        .n_s_a
+                        .load(std::sync::atomic::Ordering::Relaxed);
+                    let root_w_s_a = agent
+                        .mcts()
+                        .root()
+                        .w_s_a
+                        .load(std::sync::atomic::Ordering::Relaxed);
+
+                    trace!("root_n_s_a={}, root_w_s_a={}", root_n_s_a, root_w_s_a);
+
+                    for child in agent.mcts().root().children.read().iter() {
+                        let p_s_a = child.p_s_a.load(std::sync::atomic::Ordering::Relaxed);
+                        let n_s_a = child.n_s_a.load(std::sync::atomic::Ordering::Relaxed);
+                        let w_s_a = child.w_s_a.load(std::sync::atomic::Ordering::Relaxed);
+
+                        trace!(
+                            "action={}, p_s_a={}, n_s_a={}, w_s_a={}",
+                            child.action.unwrap(),
+                            p_s_a,
+                            n_s_a,
+                            w_s_a
+                        );
+                    }
+                }
+
                 let (action, policy) = agent
                     .sample_action_from_policy(if turn_count < self.config.temperature_threshold {
                         ActionSamplingMode::Boltzmann(self.config.temperature)
@@ -392,6 +426,8 @@ where
                 });
 
                 if z.is_some() {
+                    trace!("trajectory={:?}", trajectories.last().unwrap());
+
                     agents.swap_remove(index);
                     opponent_agents.swap_remove(index);
                     trajectories_indices.swap_remove(index);
@@ -421,6 +457,7 @@ where
         trajectories_set.into_iter().flatten().collect()
     }
 
+    /// Trains the neural network using the trajectories.
     fn train_nn(&mut self, trajectories: &[&Trajectory<G>]) -> (f32, f32, f32) {
         let input = encode_nn_input(
             self.config.device,
