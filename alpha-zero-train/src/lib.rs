@@ -248,7 +248,7 @@ where
                 }
 
                 if let Some(backup_interval) = config.backup_interval {
-                    if iteration % backup_interval == 0 {
+                    if iter % backup_interval == 0 {
                         let path = path.with_extension("bak.ot");
 
                         match self.vs.save(&path) {
