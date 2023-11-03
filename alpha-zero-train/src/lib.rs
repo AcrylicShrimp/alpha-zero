@@ -157,19 +157,20 @@ where
         for iter in 0..iteration {
             if iter % 10 == 0 {
                 info!(
-                    "(iter={}/{}) playing against a naive agent",
+                    "(iter={}/{}) measuring agent performance",
                     iter + 1,
                     iteration
                 );
 
-                let (naive_agent_won, alpha_zero_agent_won, draw) =
-                    self.play_against_naive_agent(100);
+                let (agent_name, opponent_agent_won, alpha_zero_agent_won, draw) =
+                    self.measure_agent_performance(100);
 
                 info!(
-                    "(iter={}/{}) naive agent won {} times, alpha zero agent won {} times, draw {} times",
+                    "(iter={}/{}) {} won {} times, alpha zero agent won {} times, draw {} times",
                     iter + 1,
                     iteration,
-                    naive_agent_won,
+                    agent_name,
+                    opponent_agent_won,
                     alpha_zero_agent_won,
                     draw
                 );
@@ -249,7 +250,7 @@ where
                 if let Some(backup_interval) = config.backup_interval {
                     if iteration % backup_interval == 0 {
                         let path = path.with_extension("bak.ot");
-    
+
                         match self.vs.save(&path) {
                             Ok(_) => {
                                 info!("model backup has been saved to `{}`", path.display());
@@ -266,6 +267,21 @@ where
                 }
             }
         }
+    }
+
+    fn measure_agent_performance(&self, match_count: usize) -> (&'static str, u32, u32, u32) {
+        if let Some(config) = &self.config.nn_save_config {
+            let path = config.path.with_extension("bak.ot");
+
+            if path.is_file() {
+                let (player1_won, player2_won, draw) =
+                    self.play_against_backuped_nn(path, match_count);
+                return ("old version agent", player1_won, player2_won, draw);
+            }
+        }
+
+        let (player1_won, player2_won, draw) = self.play_against_naive_agent(match_count);
+        ("naive agent", player1_won, player2_won, draw)
     }
 
     /// Plays the neural network against a naive agent to test the performance.
@@ -366,6 +382,118 @@ where
         (player1_won, player2_won, draw)
     }
 
+    fn play_against_backuped_nn(
+        &self,
+        path: impl AsRef<Path>,
+        match_count: usize,
+    ) -> (u32, u32, u32) {
+        let mut vs = VarStore::new(self.config.device);
+        let old_version_nn = NN::new(&vs.root(), self.config.nn_config.clone());
+
+        if let Err(err) = vs.load(path.as_ref()) {
+            warn!(
+                "failed to load neural network backup from `{}` due to: {}",
+                path.as_ref().display(),
+                err
+            );
+            warn!("falling back to naive agent");
+            return self.play_against_naive_agent(match_count);
+        }
+
+        let mut player1_won = 0;
+        let mut player2_won = 0;
+        let mut draw = 0;
+        let mut agents_1 = Vec::with_capacity(match_count);
+        let mut agents_2 = Vec::with_capacity(match_count);
+
+        let progress_bar = ProgressBar::new(match_count as u64);
+        progress_bar.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.white} [{bar:40.green/white}] {pos:>7}/{len:7}")
+                .unwrap()
+                .progress_chars("#>-"),
+        );
+        progress_bar.tick();
+
+        for _ in 0..match_count {
+            agents_1.push(AlphaZeroAgent::<G>::new(
+                self.config.device,
+                &old_version_nn,
+            ));
+            agents_2.push(AlphaZeroAgent::<G>::new(
+                self.config.device,
+                self.nn_optimizer.nn(),
+            ));
+        }
+
+        while !agents_1.is_empty() {
+            let turn = agents_1[0].mcts().root().game.turn();
+
+            trace!("turn={:?}", turn);
+
+            self.mcts_executor.execute(
+                self.config.device,
+                self.config.mcts_count,
+                self.config.batch_size,
+                self.config.c_puct,
+                self.config.alpha,
+                self.config.epsilon,
+                self.nn_optimizer.nn(),
+                match turn {
+                    Turn::Player1 => &agents_1,
+                    Turn::Player2 => &agents_2,
+                },
+            );
+            progress_bar.tick();
+
+            let mut index = 0;
+
+            while index < agents_1.len() {
+                let (agent, opponent_agent) = match turn {
+                    Turn::Player1 => (&mut agents_1[index], &mut agents_2[index]),
+                    Turn::Player2 => (&mut agents_2[index], &mut agents_1[index]),
+                };
+
+                let action = agent.select_action().unwrap();
+                let status = agent.take_action(action).unwrap();
+
+                opponent_agent.ensure_action_exists(action);
+                opponent_agent.take_action(action);
+
+                let is_terminal = match status {
+                    Status::Ongoing => false,
+                    Status::Player1Won => {
+                        player1_won += 1;
+                        true
+                    }
+                    Status::Player2Won => {
+                        player2_won += 1;
+                        true
+                    }
+                    Status::Draw => {
+                        draw += 1;
+                        true
+                    }
+                };
+
+                if is_terminal {
+                    agents_1.swap_remove(index);
+                    agents_2.swap_remove(index);
+
+                    progress_bar.inc(1);
+
+                    continue;
+                }
+
+                index += 1;
+            }
+        }
+
+        progress_bar.finish();
+
+        (player1_won, player2_won, draw)
+    }
+
     /// Plays the neural network against itself and collects the trajectories.
     fn self_play(&self, episodes: usize) -> Vec<Trajectory<G>> {
         let mut turn_count = 0;
@@ -398,32 +526,19 @@ where
         while !agents_1.is_empty() {
             let turn = agents_1[0].mcts().root().game.turn();
 
-            match turn {
-                Turn::Player1 => {
-                    self.mcts_executor.execute(
-                        self.config.device,
-                        self.config.mcts_count,
-                        self.config.batch_size,
-                        self.config.c_puct,
-                        self.config.alpha,
-                        self.config.epsilon,
-                        self.nn_optimizer.nn(),
-                        &agents_1,
-                    );
-                }
-                Turn::Player2 => {
-                    self.mcts_executor.execute(
-                        self.config.device,
-                        self.config.mcts_count,
-                        self.config.batch_size,
-                        self.config.c_puct,
-                        self.config.alpha,
-                        self.config.epsilon,
-                        self.nn_optimizer.nn(),
-                        &agents_2,
-                    );
-                }
-            }
+            self.mcts_executor.execute(
+                self.config.device,
+                self.config.mcts_count,
+                self.config.batch_size,
+                self.config.c_puct,
+                self.config.alpha,
+                self.config.epsilon,
+                self.nn_optimizer.nn(),
+                match turn {
+                    Turn::Player1 => &agents_1,
+                    Turn::Player2 => &agents_2,
+                },
+            );
 
             progress_bar.tick();
 
