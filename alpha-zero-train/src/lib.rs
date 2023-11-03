@@ -12,14 +12,14 @@ use crate::{
 use agents::NaiveAgent;
 use game::{Game, Status, Turn};
 use indicatif::{ProgressBar, ProgressStyle};
-use log::{info, trace};
+use log::{info, trace, warn};
 use nn::{
     nn_optimizer::{NNOptimizer, NNOptimizerConfig},
     NNConfig, NN,
 };
 use parallel_mcts_executor::{MCTSExecutorConfig, ParallelMCTSExecutor};
 use rand::{seq::IteratorRandom, thread_rng};
-use std::collections::VecDeque;
+use std::{collections::VecDeque, path::PathBuf};
 use tch::{
     nn::{Adam, VarStore},
     Device,
@@ -69,6 +69,8 @@ pub struct TrainerConfig {
     pub parameter_update_count: usize,
     /// The number of trajectories to use for a single parameter update.
     pub parameter_update_batch_size: usize,
+    /// Path to the neural network (and optimizer state) to be saved or loaded.
+    pub nn_path: Option<PathBuf>,
 }
 
 /// A trainer for an alpha zero agent.
@@ -92,11 +94,18 @@ where
 {
     /// Creates a new trainer.
     pub fn new(config: TrainerConfig) -> Result<Self, TrainerBuildError> {
-        let vs = VarStore::new(config.device);
+        let mut vs = VarStore::new(config.device);
         let nn = NN::new(&vs.root(), config.nn_config.clone());
         let nn_optimizer =
             NNOptimizer::new(&vs, config.nn_optimizer_config.clone(), nn, Adam::default())?;
         let mcts_executor = ParallelMCTSExecutor::new(config.mcts_executor_config.clone())?;
+
+        if let Some(path) = &config.nn_path {
+            if path.is_file() {
+                info!("loading neural network from `{}`", path.display());
+                vs.load(path)?;
+            }
+        }
 
         Ok(Self {
             config,
@@ -197,6 +206,21 @@ where
                 v_loss,
                 pi_loss
             );
+
+            if let Some(path) = &self.config.nn_path {
+                match self.vs.save(path) {
+                    Ok(_) => {
+                        info!("model has been saved to `{}`", path.display());
+                    }
+                    Err(err) => {
+                        warn!(
+                            "failed to save model to `{}` due to: {}",
+                            path.display(),
+                            err
+                        );
+                    }
+                }
+            }
         }
     }
 

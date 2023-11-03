@@ -39,6 +39,7 @@ fn main() {
         temperature_threshold: 30,
         parameter_update_count: 400,
         parameter_update_batch_size: 64,
+        nn_path: Some("saves/alpha-zero-gomoku9-adam".into()),
     })
     .unwrap();
 

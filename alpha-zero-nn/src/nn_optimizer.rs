@@ -41,6 +41,10 @@ where
         &self.nn
     }
 
+    pub fn optimizer_mut(&mut self) -> &mut Optimizer {
+        &mut self.optimizer
+    }
+
     /// Performs a single training step.
     /// Returns the total loss, the value loss and the policy loss.
     pub fn step(
