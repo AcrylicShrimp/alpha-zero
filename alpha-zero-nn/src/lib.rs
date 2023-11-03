@@ -11,6 +11,7 @@ use tch::{
 pub struct NNConfig {
     pub residual_blocks: usize,
     pub residual_block_channels: usize,
+    pub residual_block_mid_channels: Option<usize>,
     pub fc0_channels: usize,
     pub fc1_channels: usize,
 }
@@ -48,7 +49,14 @@ where
         let mut residual_blocks = Vec::with_capacity(config.residual_blocks);
 
         for _ in 0..config.residual_blocks {
-            residual_blocks.push(residual_block(vs, config.residual_block_channels as i64));
+            residual_blocks.push(match config.residual_block_mid_channels {
+                Some(mid_channels) => bottleneck_residual_block(
+                    vs,
+                    config.residual_block_channels as i64,
+                    mid_channels as i64,
+                ),
+                None => residual_block(vs, config.residual_block_channels as i64),
+            });
         }
 
         let fc0 = nn::linear(
@@ -216,6 +224,43 @@ impl ModuleT for ResidualBlock {
     }
 }
 
+fn bottleneck_residual_block<'a>(
+    vs: impl Borrow<Path<'a>>,
+    channels: i64,
+    mid_channels: i64,
+) -> ResidualBlock {
+    let vs = vs.borrow();
+    let conv1 = nn::conv2d(
+        vs,
+        channels,
+        mid_channels,
+        3,
+        ConvConfig {
+            padding: 1,
+            ..Default::default()
+        },
+    );
+    let bn1 = nn::batch_norm2d(vs, mid_channels, Default::default());
+    let conv2 = nn::conv2d(
+        vs,
+        mid_channels,
+        channels,
+        3,
+        ConvConfig {
+            padding: 1,
+            ..Default::default()
+        },
+    );
+    let bn2 = nn::batch_norm2d(vs, channels, Default::default());
+
+    ResidualBlock {
+        conv1,
+        bn1,
+        conv2,
+        bn2,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,6 +273,7 @@ mod tests {
             NNConfig {
                 residual_blocks: 2,
                 residual_block_channels: 32,
+                residual_block_mid_channels: None,
                 fc0_channels: 32,
                 fc1_channels: 32,
             },
@@ -259,6 +305,7 @@ mod tests {
             NNConfig {
                 residual_blocks: 2,
                 residual_block_channels: 32,
+                residual_block_mid_channels: None,
                 fc0_channels: 32,
                 fc1_channels: 32,
             },

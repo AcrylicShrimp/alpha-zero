@@ -23,6 +23,7 @@ fn main() {
         nn_config: NNConfig {
             residual_blocks: 3,
             residual_block_channels: 128,
+            residual_block_mid_channels: Some(32),
             fc0_channels: 512,
             fc1_channels: 512,
         },
