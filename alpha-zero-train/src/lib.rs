@@ -20,7 +20,10 @@ use nn::{
 use parallel_mcts_executor::{MCTSExecutorConfig, ParallelMCTSExecutor};
 use rand::{seq::IteratorRandom, thread_rng};
 use std::collections::VecDeque;
-use tch::{nn::VarStore, Device};
+use tch::{
+    nn::{Adam, VarStore},
+    Device,
+};
 use thiserror::Error;
 use trajectory::Trajectory;
 
@@ -91,7 +94,8 @@ where
     pub fn new(config: TrainerConfig) -> Result<Self, TrainerBuildError> {
         let vs = VarStore::new(config.device);
         let nn = NN::new(&vs.root(), config.nn_config.clone());
-        let nn_optimizer = NNOptimizer::new_adam(&vs, config.nn_optimizer_config.clone(), nn)?;
+        let nn_optimizer =
+            NNOptimizer::new(&vs, config.nn_optimizer_config.clone(), nn, Adam::default())?;
         let mcts_executor = ParallelMCTSExecutor::new(config.mcts_executor_config.clone())?;
 
         Ok(Self {

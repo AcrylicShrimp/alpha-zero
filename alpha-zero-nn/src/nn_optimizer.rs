@@ -1,7 +1,7 @@
 use crate::NN;
 use game::Game;
 use tch::{
-    nn::{Adam, Optimizer, OptimizerConfig, VarStore},
+    nn::{Optimizer, OptimizerConfig, VarStore},
     Reduction, TchError, Tensor,
 };
 
@@ -25,9 +25,14 @@ impl<G> NNOptimizer<G>
 where
     G: Game,
 {
-    /// Creates a new optimizer for the given neural network, using Adam as the optimizer.
-    pub fn new_adam(vs: &VarStore, config: NNOptimizerConfig, nn: NN<G>) -> Result<Self, TchError> {
-        let optimizer = Adam::default().build(vs, config.lr)?;
+    /// Creates a new optimizer for the given neural network.
+    pub fn new(
+        vs: &VarStore,
+        config: NNOptimizerConfig,
+        nn: NN<G>,
+        optimizer: impl OptimizerConfig,
+    ) -> Result<Self, TchError> {
+        let optimizer = optimizer.build(vs, config.lr)?;
 
         Ok(Self { optimizer, nn })
     }
