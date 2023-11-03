@@ -30,15 +30,15 @@ fn main() {
         nn_optimizer_config: NNOptimizerConfig { lr: 0.001f64 },
         replay_buffer_size: 100000,
         episodes: 100,
-        mcts_count: 200,
+        mcts_count: 400,
         batch_size: 4,
         c_puct: 1f32,
         alpha: 0.03f32,
         epsilon: 0.25f32,
         temperature: 1f32,
-        temperature_threshold: 25,
+        temperature_threshold: 30,
         parameter_update_count: 400,
-        parameter_update_batch_size: 128,
+        parameter_update_batch_size: 64,
     })
     .unwrap();
 
