@@ -1,7 +1,9 @@
 use log::info;
 use nn::{nn_optimizer::NNOptimizerConfig, NNConfig};
 use tch::Device;
-use train::{parallel_mcts_executor::MCTSExecutorConfig, Trainer, TrainerConfig};
+use train::{
+    parallel_mcts_executor::MCTSExecutorConfig, Trainer, TrainerConfig, TrainerNNSaveConfig,
+};
 
 fn main() {
     env_logger::init();
@@ -39,7 +41,10 @@ fn main() {
         temperature_threshold: 30,
         parameter_update_count: 400,
         parameter_update_batch_size: 64,
-        nn_path: Some("saves/alpha-zero-gomoku9-adam".into()),
+        nn_save_config: Some(TrainerNNSaveConfig {
+            path: "saves/alpha-zero-gomoku9-adam".into(),
+            backup_interval: Some(50),
+        }),
     })
     .unwrap();
 

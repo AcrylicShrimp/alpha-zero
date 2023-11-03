@@ -19,7 +19,10 @@ use nn::{
 };
 use parallel_mcts_executor::{MCTSExecutorConfig, ParallelMCTSExecutor};
 use rand::{seq::IteratorRandom, thread_rng};
-use std::{collections::VecDeque, path::PathBuf};
+use std::{
+    collections::VecDeque,
+    path::{Path, PathBuf},
+};
 use tch::{
     nn::{Adam, VarStore},
     Device,
@@ -33,6 +36,17 @@ pub enum TrainerBuildError {
     ThreadPoolBuildError(#[from] rayon::ThreadPoolBuildError),
     #[error("failed to build neural network optimizer: {0}")]
     TchError(#[from] tch::TchError),
+}
+
+/// Neural network save/load configuration.
+/// The neural network will be saved every iteration.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TrainerNNSaveConfig {
+    /// Path to the neural network (and optimizer state) to be saved or loaded.
+    pub path: PathBuf,
+    /// Neural network backup interval. The neural network will be backed up every `backup_interval` iterations.
+    /// This is useful if you want "freeze" the neural network for a while and see how the agent performs.
+    pub backup_interval: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -69,8 +83,8 @@ pub struct TrainerConfig {
     pub parameter_update_count: usize,
     /// The number of trajectories to use for a single parameter update.
     pub parameter_update_batch_size: usize,
-    /// Path to the neural network (and optimizer state) to be saved or loaded.
-    pub nn_path: Option<PathBuf>,
+    /// Neural network save/load configuration.
+    pub nn_save_config: Option<TrainerNNSaveConfig>,
 }
 
 /// A trainer for an alpha zero agent.
@@ -100,12 +114,19 @@ where
             NNOptimizer::new(&vs, config.nn_optimizer_config.clone(), nn, Adam::default())?;
         let mcts_executor = ParallelMCTSExecutor::new(config.mcts_executor_config.clone())?;
 
-        if let Some(path) = &config.nn_path {
-            let path = path.with_extension("ot");
+        if let Some(config) = &config.nn_save_config {
+            let path = config.path.with_extension("ot");
 
             if path.is_file() {
                 info!("loading neural network from `{}`", path.display());
                 vs.load(path)?;
+            } else {
+                let path = path.with_extension("bak.ot");
+
+                if path.is_file() {
+                    info!("loading neural network from `{}`", path.display());
+                    vs.load(path)?;
+                }
             }
         }
 
@@ -209,8 +230,8 @@ where
                 pi_loss
             );
 
-            if let Some(path) = &self.config.nn_path {
-                let path = path.with_extension("ot");
+            if let Some(config) = &self.config.nn_save_config {
+                let path = config.path.with_extension("ot");
 
                 match self.vs.save(&path) {
                     Ok(_) => {
@@ -222,6 +243,25 @@ where
                             path.display(),
                             err
                         );
+                    }
+                }
+
+                if let Some(backup_interval) = config.backup_interval {
+                    if iteration % backup_interval == 0 {
+                        let path = path.with_extension("bak.ot");
+    
+                        match self.vs.save(&path) {
+                            Ok(_) => {
+                                info!("model backup has been saved to `{}`", path.display());
+                            }
+                            Err(err) => {
+                                warn!(
+                                    "failed to save model backup to `{}` due to: {}",
+                                    path.display(),
+                                    err
+                                );
+                            }
+                        }
                     }
                 }
             }
