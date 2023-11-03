@@ -59,6 +59,7 @@ where
             pi.cross_entropy_loss::<&Tensor>(&policy_target, None, Reduction::Mean, -100, 0.0);
         let loss = &v_loss + &pi_loss;
 
+        self.optimizer.zero_grad();
         loss.backward();
         self.optimizer.step();
 
