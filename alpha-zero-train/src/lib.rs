@@ -101,6 +101,8 @@ where
         let mcts_executor = ParallelMCTSExecutor::new(config.mcts_executor_config.clone())?;
 
         if let Some(path) = &config.nn_path {
+            let path = path.with_extension("ot");
+
             if path.is_file() {
                 info!("loading neural network from `{}`", path.display());
                 vs.load(path)?;
@@ -208,7 +210,9 @@ where
             );
 
             if let Some(path) = &self.config.nn_path {
-                match self.vs.save(path) {
+                let path = path.with_extension("ot");
+
+                match self.vs.save(&path) {
                     Ok(_) => {
                         info!("model has been saved to `{}`", path.display());
                     }
