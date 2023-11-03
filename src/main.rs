@@ -21,9 +21,9 @@ fn main() {
         device,
         mcts_executor_config: MCTSExecutorConfig { num_threads: None },
         nn_config: NNConfig {
-            residual_blocks: 3,
-            residual_block_channels: 128,
-            residual_block_mid_channels: Some(32),
+            residual_blocks: 7,
+            residual_block_channels: 256,
+            residual_block_mid_channels: None,
             fc0_channels: 512,
             fc1_channels: 512,
         },
@@ -39,7 +39,7 @@ fn main() {
         temperature_threshold: 30,
         parameter_update_count: 400,
         parameter_update_batch_size: 64,
-        nn_path: Some("saves/alpha-zero-gomoku9-adam".into()),
+        nn_path: Some("saves/alpha-zero-gomoku9-adam.ot".into()),
     })
     .unwrap();
 
