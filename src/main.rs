@@ -41,6 +41,7 @@ fn main() {
         temperature_threshold: 30,
         parameter_update_count: 400,
         parameter_update_batch_size: 64,
+        match_count: 100,
         nn_save_config: Some(TrainerNNSaveConfig {
             path: "saves/alpha-zero-gomoku9-adam".into(),
             backup_interval: Some(50),

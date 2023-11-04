@@ -83,6 +83,8 @@ pub struct TrainerConfig {
     pub parameter_update_count: usize,
     /// The number of trajectories to use for a single parameter update.
     pub parameter_update_batch_size: usize,
+    /// Number of matches to play against other agents to test the performance.
+    pub match_count: usize,
     /// Neural network save/load configuration.
     pub nn_save_config: Option<TrainerNNSaveConfig>,
 }
@@ -162,18 +164,36 @@ where
                     iteration
                 );
 
-                let (agent_name, opponent_agent_won, alpha_zero_agent_won, draw) =
-                    self.measure_agent_performance(100);
+                let (player1_won, player2_won, draw) =
+                    self.play_against_naive_agent(self.config.match_count);
 
                 info!(
-                    "(iter={}/{}) {} won {} times, alpha zero agent won {} times, draw {} times",
+                    "(iter={}/{}) naive agent won {} times, alpha zero agent won {} times, draw {} times",
                     iter + 1,
                     iteration,
-                    agent_name,
-                    opponent_agent_won,
-                    alpha_zero_agent_won,
+                    player1_won,
+                    player2_won,
                     draw
                 );
+
+                if let Some(config) = &self.config.nn_save_config {
+                    let path = config.path.with_extension("bak.ot");
+
+                    if path.is_file() {
+                        if let Some((player1_won, player2_won, draw)) =
+                            self.play_against_backuped_nn(path, self.config.match_count)
+                        {
+                            info!(
+                                "(iter={}/{}) old-version agent won {} times, alpha zero agent won {} times, draw {} times",
+                                iter + 1,
+                                iteration,
+                                player1_won,
+                                player2_won,
+                                draw
+                            );
+                        }
+                    }
+                }
             }
 
             info!("(iter={}/{}) self playing", iter + 1, iteration);
@@ -267,21 +287,6 @@ where
                 }
             }
         }
-    }
-
-    fn measure_agent_performance(&self, match_count: usize) -> (&'static str, u32, u32, u32) {
-        if let Some(config) = &self.config.nn_save_config {
-            let path = config.path.with_extension("bak.ot");
-
-            if path.is_file() {
-                let (player1_won, player2_won, draw) =
-                    self.play_against_backuped_nn(path, match_count);
-                return ("old version agent", player1_won, player2_won, draw);
-            }
-        }
-
-        let (player1_won, player2_won, draw) = self.play_against_naive_agent(match_count);
-        ("naive agent", player1_won, player2_won, draw)
     }
 
     /// Plays the neural network against a naive agent to test the performance.
@@ -386,7 +391,7 @@ where
         &self,
         path: impl AsRef<Path>,
         match_count: usize,
-    ) -> (u32, u32, u32) {
+    ) -> Option<(u32, u32, u32)> {
         let mut vs = VarStore::new(self.config.device);
         let old_version_nn = NN::new(&vs.root(), self.config.nn_config.clone());
 
@@ -396,8 +401,7 @@ where
                 path.as_ref().display(),
                 err
             );
-            warn!("falling back to naive agent");
-            return self.play_against_naive_agent(match_count);
+            return None;
         }
 
         let mut player1_won = 0;
@@ -491,7 +495,7 @@ where
 
         progress_bar.finish();
 
-        (player1_won, player2_won, draw)
+        Some((player1_won, player2_won, draw))
     }
 
     /// Plays the neural network against itself and collects the trajectories.
