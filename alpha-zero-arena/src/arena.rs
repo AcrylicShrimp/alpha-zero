@@ -4,6 +4,7 @@ use tch::Device;
 use train::{
     agent::Agent,
     agents::{ActionSamplingMode, AlphaZeroAgent},
+    encode::{encode_nn_input, EncodingPerspective},
     parallel_mcts_executor::{MCTSExecutorConfig, ParallelMCTSExecutor},
 };
 
@@ -34,6 +35,15 @@ where
         let mut agent = vec![AlphaZeroAgent::new(self.device, &self.nn)];
 
         loop {
+            let input = encode_nn_input(
+                self.device,
+                1,
+                EncodingPerspective::Player,
+                std::iter::once(&game),
+            );
+            let (v, _) = self.nn.forward(&input, false);
+            println!("v={}", v.double_value(&[]));
+
             let action = match game.turn() {
                 Turn::Player1 => loop {
                     println!();
