@@ -1,4 +1,10 @@
-use crate::{BoardShape, Game, PlayableGame, SerdeGame, Status, Turn};
+use crate::{
+    augmentation_utils::{
+        flip_horizontal_bitvec, flip_vertical_bitvec, rotate_180_bitvec, rotate_270_bitvec,
+        rotate_90_bitvec,
+    },
+    BoardShape, Game, PlayableGame, SerdeGame, Status, Turn,
+};
 use bitvec::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -230,6 +236,81 @@ impl Game for Gomoku9 {
         self.turn = self.turn.opposite();
 
         Some(status)
+    }
+
+    fn augment(&self) -> Vec<Self> {
+        let mut augmented_rotate_90 = self.clone();
+        let mut augmented_rorate_180 = self.clone();
+        let mut augmented_rotate_270 = self.clone();
+        let mut augmented_flip_horizontal = self.clone();
+        let mut augmented_flip_vertical = self.clone();
+
+        let board_player1 = Vec::from_iter(self.board_player1.iter().map(|occupied| *occupied));
+        let board_player2 = Vec::from_iter(self.board_player2.iter().map(|occupied| *occupied));
+        let width = Self::BOARD_SHAPE.width as usize;
+
+        rotate_90_bitvec(
+            &board_player1,
+            &mut augmented_rotate_90.board_player1,
+            width,
+        );
+        rotate_90_bitvec(
+            &board_player2,
+            &mut augmented_rotate_90.board_player2,
+            width,
+        );
+
+        rotate_180_bitvec(
+            &board_player1,
+            &mut augmented_rorate_180.board_player1,
+            width,
+        );
+        rotate_180_bitvec(
+            &board_player2,
+            &mut augmented_rorate_180.board_player2,
+            width,
+        );
+
+        rotate_270_bitvec(
+            &board_player1,
+            &mut augmented_rotate_270.board_player1,
+            width,
+        );
+        rotate_270_bitvec(
+            &board_player2,
+            &mut augmented_rotate_270.board_player2,
+            width,
+        );
+
+        flip_horizontal_bitvec(
+            &board_player1,
+            &mut augmented_flip_horizontal.board_player1,
+            width,
+        );
+        flip_horizontal_bitvec(
+            &board_player2,
+            &mut augmented_flip_horizontal.board_player2,
+            width,
+        );
+
+        flip_vertical_bitvec(
+            &board_player1,
+            &mut augmented_flip_vertical.board_player1,
+            width,
+        );
+        flip_vertical_bitvec(
+            &board_player2,
+            &mut augmented_flip_vertical.board_player2,
+            width,
+        );
+
+        vec![
+            augmented_rotate_90,
+            augmented_rorate_180,
+            augmented_rotate_270,
+            augmented_flip_horizontal,
+            augmented_flip_vertical,
+        ]
     }
 }
 

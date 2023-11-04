@@ -168,6 +168,10 @@ impl Game for TicTacToe {
 
         Some(status)
     }
+
+    fn augment(&self) -> Vec<Self> {
+        vec![]
+    }
 }
 
 impl SerdeGame for TicTacToe {}

@@ -640,7 +640,19 @@ where
                 trajectory.z = z;
             }
 
-            // TODO: augment the trajectories
+            let mut augmented = Vec::with_capacity(trajectories.len());
+
+            for trajectory in trajectories.iter() {
+                for game in trajectory.game.augment() {
+                    augmented.push(Trajectory {
+                        game,
+                        policy: trajectory.policy.clone(),
+                        z: trajectory.z,
+                    });
+                }
+            }
+
+            trajectories.extend(augmented);
         }
 
         progress_bar.finish();

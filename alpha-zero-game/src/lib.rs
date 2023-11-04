@@ -1,3 +1,4 @@
+mod augmentation_utils;
 pub mod games;
 
 use bitvec::vec::BitVec;
@@ -108,6 +109,10 @@ where
     /// Take the given action and return the game status.
     /// If the action is not available, return `None`.
     fn take_action(&mut self, action: usize) -> Option<Status>;
+
+    /// Return games that represents same game state but have different board state.
+    /// For example, in chess, the board can be flipped.
+    fn augment(&self) -> Vec<Self>;
 }
 
 #[cfg(feature = "serde")]
