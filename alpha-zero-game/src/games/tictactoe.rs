@@ -1,4 +1,4 @@
-use crate::{BoardShape, Game, SerdeGame, Status, Turn};
+use crate::{BoardShape, Game, PlayableGame, SerdeGame, Status, Turn};
 use bitvec::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -24,6 +24,18 @@ impl TicTacToe {
 
     fn place_player2_stone_at(&mut self, index: usize) {
         self.board_player2 |= 1 << index;
+    }
+
+    fn display_stone_at(&self, x: usize, y: usize) -> char {
+        let index = y * 3 + x;
+
+        if self.has_player1_stone_at(index) {
+            'X'
+        } else if self.has_player2_stone_at(index) {
+            'O'
+        } else {
+            ' '
+        }
     }
 }
 
@@ -159,6 +171,33 @@ impl Game for TicTacToe {
 }
 
 impl SerdeGame for TicTacToe {}
+
+impl PlayableGame for TicTacToe {
+    fn display_board(&self) -> String {
+        let mut rows = Vec::with_capacity(4);
+
+        rows.push(" 0 1 2".to_owned());
+
+        for y in 0..3 {
+            let (x0, x1, x2) = (
+                self.display_stone_at(0, y),
+                self.display_stone_at(1, y),
+                self.display_stone_at(2, y),
+            );
+
+            rows.push(format!("{}{} {} {}", y, x0, x1, x2));
+        }
+
+        rows.join("\n")
+    }
+
+    fn parse_action(&self, input: &str) -> Option<usize> {
+        let mut slices = input.trim().split_ascii_whitespace();
+        let x = slices.next()?.parse::<usize>().ok()?;
+        let y = slices.next()?.parse::<usize>().ok()?;
+        Some(y * 3 + x)
+    }
+}
 
 #[cfg(test)]
 mod tests {

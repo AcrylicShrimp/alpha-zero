@@ -1,4 +1,4 @@
-use crate::{BoardShape, Game, SerdeGame, Status, Turn};
+use crate::{BoardShape, Game, PlayableGame, SerdeGame, Status, Turn};
 use bitvec::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -70,6 +70,18 @@ impl Gomoku9 {
         }
 
         count
+    }
+
+    fn display_stone_at(&self, x: usize, y: usize) -> char {
+        let index = y * 9 + x;
+
+        if self.has_player1_stone_at(index) {
+            'X'
+        } else if self.has_player2_stone_at(index) {
+            'O'
+        } else {
+            ' '
+        }
     }
 }
 
@@ -222,3 +234,39 @@ impl Game for Gomoku9 {
 }
 
 impl SerdeGame for Gomoku9 {}
+
+impl PlayableGame for Gomoku9 {
+    fn display_board(&self) -> String {
+        let mut rows = Vec::with_capacity(4);
+
+        rows.push(" 0 1 2 3 4 5 6 7 8".to_owned());
+
+        for y in 0..9 {
+            let (x0, x1, x2, x3, x4, x5, x6, x7, x8) = (
+                self.display_stone_at(0, y),
+                self.display_stone_at(1, y),
+                self.display_stone_at(2, y),
+                self.display_stone_at(3, y),
+                self.display_stone_at(4, y),
+                self.display_stone_at(5, y),
+                self.display_stone_at(6, y),
+                self.display_stone_at(7, y),
+                self.display_stone_at(8, y),
+            );
+
+            rows.push(format!(
+                "{}{} {} {} {} {} {} {} {} {}",
+                y, x0, x1, x2, x3, x4, x5, x6, x7, x8
+            ));
+        }
+
+        rows.join("\n")
+    }
+
+    fn parse_action(&self, input: &str) -> Option<usize> {
+        let mut slices = input.trim().split_ascii_whitespace();
+        let x = slices.next()?.parse::<usize>().ok()?;
+        let y = slices.next()?.parse::<usize>().ok()?;
+        Some(y * 9 + x)
+    }
+}

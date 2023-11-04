@@ -119,3 +119,12 @@ where
 
 #[cfg(not(feature = "serde"))]
 pub trait SerdeGame {}
+
+/// Represents a game that can be played by a human.
+pub trait PlayableGame {
+    /// Display the board in a human-readable format.
+    fn display_board(&self) -> String;
+
+    /// Parse the given action. If the action is invalid, return `None`.
+    fn parse_action(&self, input: &str) -> Option<usize>;
+}

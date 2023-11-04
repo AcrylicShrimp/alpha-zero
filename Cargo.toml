@@ -16,6 +16,7 @@ tch = { version = "0.14", features = ["download-libtorch"] }
 
 [workspace]
 members = [
+  "./alpha-zero-arena",
   "./alpha-zero-game",
   "./alpha-zero-mcts",
   "./alpha-zero-nn",
