@@ -9,6 +9,7 @@ pub struct Chess {
 }
 
 #[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Direction {
     North,
     NorthEast,
@@ -20,7 +21,112 @@ enum Direction {
     NorthWest,
 }
 
+impl Direction {
+    pub fn from_index(index: u8) -> Self {
+        match index {
+            0 => Direction::North,
+            1 => Direction::NorthEast,
+            2 => Direction::East,
+            3 => Direction::SouthEast,
+            4 => Direction::South,
+            5 => Direction::SouthWest,
+            6 => Direction::West,
+            7 => Direction::NorthWest,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn to_dest(self, source: Square, distance: usize) -> Option<Square> {
+        let rank = source.get_rank();
+        let file = source.get_file();
+
+        match self {
+            Direction::North => {
+                if rank.to_index() + distance > 7 {
+                    return None;
+                }
+
+                Some(Square::make_square(
+                    Rank::from_index(rank.to_index() + distance),
+                    file,
+                ))
+            }
+            Direction::NorthEast => {
+                if rank.to_index() + distance > 7 || file.to_index() + distance > 7 {
+                    return None;
+                }
+
+                Some(Square::make_square(
+                    Rank::from_index(rank.to_index() + distance),
+                    File::from_index(file.to_index() + distance),
+                ))
+            }
+            Direction::East => {
+                if file.to_index() + distance > 7 {
+                    return None;
+                }
+
+                Some(Square::make_square(
+                    rank,
+                    File::from_index(file.to_index() + distance),
+                ))
+            }
+            Direction::SouthEast => {
+                if rank.to_index() < distance || file.to_index() + distance > 7 {
+                    return None;
+                }
+
+                Some(Square::make_square(
+                    Rank::from_index(rank.to_index() - distance),
+                    File::from_index(file.to_index() + distance),
+                ))
+            }
+            Direction::South => {
+                if rank.to_index() < distance {
+                    return None;
+                }
+
+                Some(Square::make_square(
+                    Rank::from_index(rank.to_index() - distance),
+                    file,
+                ))
+            }
+            Direction::SouthWest => {
+                if rank.to_index() < distance || file.to_index() < distance {
+                    return None;
+                }
+
+                Some(Square::make_square(
+                    Rank::from_index(rank.to_index() - distance),
+                    File::from_index(file.to_index() - distance),
+                ))
+            }
+            Direction::West => {
+                if file.to_index() < distance {
+                    return None;
+                }
+
+                Some(Square::make_square(
+                    rank,
+                    File::from_index(file.to_index() - distance),
+                ))
+            }
+            Direction::NorthWest => {
+                if rank.to_index() + distance > 7 || file.to_index() < distance {
+                    return None;
+                }
+
+                Some(Square::make_square(
+                    Rank::from_index(rank.to_index() + distance),
+                    File::from_index(file.to_index() - distance),
+                ))
+            }
+        }
+    }
+}
+
 #[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum KnightMove {
     NorthNorthEast,
     NorthEastEast,
@@ -32,13 +138,129 @@ enum KnightMove {
     NorthNorthWest,
 }
 
+impl KnightMove {
+    pub fn from_index(index: u8) -> Self {
+        match index {
+            0 => KnightMove::NorthNorthEast,
+            1 => KnightMove::NorthEastEast,
+            2 => KnightMove::SouthEastEast,
+            3 => KnightMove::SouthSouthEast,
+            4 => KnightMove::SouthSouthWest,
+            5 => KnightMove::SouthWestWest,
+            6 => KnightMove::NorthWestWest,
+            7 => KnightMove::NorthNorthWest,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn to_dest(self, source: Square) -> Option<Square> {
+        let rank = source.get_rank();
+        let file = source.get_file();
+
+        match self {
+            KnightMove::NorthNorthEast => {
+                if rank.to_index() + 2 > 7 || file.to_index() + 1 > 7 {
+                    return None;
+                }
+
+                Some(Square::make_square(
+                    Rank::from_index(rank.to_index() + 2),
+                    File::from_index(file.to_index() + 1),
+                ))
+            }
+            KnightMove::NorthEastEast => {
+                if rank.to_index() + 1 > 7 || file.to_index() + 2 > 7 {
+                    return None;
+                }
+
+                Some(Square::make_square(
+                    Rank::from_index(rank.to_index() + 1),
+                    File::from_index(file.to_index() + 2),
+                ))
+            }
+            KnightMove::SouthEastEast => {
+                if rank.to_index() < 1 || file.to_index() + 2 > 7 {
+                    return None;
+                }
+
+                Some(Square::make_square(
+                    Rank::from_index(rank.to_index() - 1),
+                    File::from_index(file.to_index() + 2),
+                ))
+            }
+            KnightMove::SouthSouthEast => {
+                if rank.to_index() < 2 || file.to_index() + 1 > 7 {
+                    return None;
+                }
+
+                Some(Square::make_square(
+                    Rank::from_index(rank.to_index() - 2),
+                    File::from_index(file.to_index() + 1),
+                ))
+            }
+            KnightMove::SouthSouthWest => {
+                if rank.to_index() < 2 || file.to_index() < 1 {
+                    return None;
+                }
+
+                Some(Square::make_square(
+                    Rank::from_index(rank.to_index() - 2),
+                    File::from_index(file.to_index() - 1),
+                ))
+            }
+            KnightMove::SouthWestWest => {
+                if rank.to_index() < 1 || file.to_index() < 2 {
+                    return None;
+                }
+
+                Some(Square::make_square(
+                    Rank::from_index(rank.to_index() - 1),
+                    File::from_index(file.to_index() - 2),
+                ))
+            }
+            KnightMove::NorthWestWest => {
+                if rank.to_index() + 1 > 7 || file.to_index() < 2 {
+                    return None;
+                }
+
+                Some(Square::make_square(
+                    Rank::from_index(rank.to_index() + 1),
+                    File::from_index(file.to_index() - 2),
+                ))
+            }
+            KnightMove::NorthNorthWest => {
+                if rank.to_index() + 2 > 7 || file.to_index() < 1 {
+                    return None;
+                }
+
+                Some(Square::make_square(
+                    Rank::from_index(rank.to_index() + 2),
+                    File::from_index(file.to_index() - 1),
+                ))
+            }
+        }
+    }
+}
+
 #[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum PawnPromotionWay {
     NorthOrSouth,
     /// Capture to the east.
     East,
     /// Capture to the west.
     West,
+}
+
+impl PawnPromotionWay {
+    pub fn from_index(index: u8) -> Self {
+        match index {
+            0 => PawnPromotionWay::NorthOrSouth,
+            1 => PawnPromotionWay::East,
+            2 => PawnPromotionWay::West,
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl Chess {
@@ -155,7 +377,7 @@ impl Chess {
     }
 
     /// Converts an index in the range [0, 4671] to a chess move.
-    pub fn index_to_move(index: usize) -> ChessMove {
+    pub fn index_to_move(board: &Board, index: usize) -> Option<ChessMove> {
         let source = index / 73;
         let file = File::from_index(source / 8);
         let rank = Rank::from_index(source % 8);
@@ -164,129 +386,36 @@ impl Chess {
         match index % 73 {
             index @ 0..=55 => {
                 // queen move
-                let direction = index / 7;
+                let direction = Direction::from_index((index / 7) as u8);
                 let distance = index % 7 + 1;
-
-                return match direction {
-                    0 => {
-                        let dest =
-                            Square::make_square(Rank::from_index(rank.to_index() + distance), file);
-                        ChessMove::new(source, dest, None)
-                    }
-                    1 => {
-                        let dest = Square::make_square(
-                            Rank::from_index(rank.to_index() + distance),
-                            File::from_index(file.to_index() + distance),
-                        );
-                        ChessMove::new(source, dest, None)
-                    }
-                    2 => {
-                        let dest =
-                            Square::make_square(rank, File::from_index(file.to_index() + distance));
-                        ChessMove::new(source, dest, None)
-                    }
-                    3 => {
-                        let dest = Square::make_square(
-                            Rank::from_index(rank.to_index() - distance),
-                            File::from_index(file.to_index() + distance),
-                        );
-                        ChessMove::new(source, dest, None)
-                    }
-                    4 => {
-                        let dest =
-                            Square::make_square(Rank::from_index(rank.to_index() - distance), file);
-                        ChessMove::new(source, dest, None)
-                    }
-                    5 => {
-                        let dest = Square::make_square(
-                            Rank::from_index(rank.to_index() - distance),
-                            File::from_index(file.to_index() - distance),
-                        );
-                        ChessMove::new(source, dest, None)
-                    }
-                    6 => {
-                        let dest =
-                            Square::make_square(rank, File::from_index(file.to_index() - distance));
-                        ChessMove::new(source, dest, None)
-                    }
-                    7 => {
-                        let dest = Square::make_square(
-                            Rank::from_index(rank.to_index() + distance),
-                            File::from_index(file.to_index() - distance),
-                        );
-                        ChessMove::new(source, dest, None)
-                    }
-                    _ => unreachable!(),
+                let dest = direction.to_dest(source, distance as usize)?;
+                let promotion = if (direction == Direction::North || direction == Direction::South)
+                    && board.piece_on(source) == Some(Piece::Pawn)
+                    && (dest.get_rank() == Rank::First || dest.get_rank() == Rank::Eighth)
+                {
+                    Some(Piece::Queen)
+                } else {
+                    None
                 };
+
+                return Some(ChessMove::new(source, dest, promotion));
             }
             index @ 56..=63 => {
                 // knight move
-                let direction = index - 56;
+                let direction = KnightMove::from_index((index - 56) as u8);
+                let dest = direction.to_dest(source)?;
 
-                return match direction {
-                    0 => {
-                        let dest = Square::make_square(
-                            Rank::from_index(rank.to_index() + 2),
-                            File::from_index(file.to_index() + 1),
-                        );
-                        ChessMove::new(source, dest, None)
-                    }
-                    1 => {
-                        let dest = Square::make_square(
-                            Rank::from_index(rank.to_index() + 1),
-                            File::from_index(file.to_index() + 2),
-                        );
-                        ChessMove::new(source, dest, None)
-                    }
-                    2 => {
-                        let dest = Square::make_square(
-                            Rank::from_index(rank.to_index() - 1),
-                            File::from_index(file.to_index() + 2),
-                        );
-                        ChessMove::new(source, dest, None)
-                    }
-                    3 => {
-                        let dest = Square::make_square(
-                            Rank::from_index(rank.to_index() - 2),
-                            File::from_index(file.to_index() + 1),
-                        );
-                        ChessMove::new(source, dest, None)
-                    }
-                    4 => {
-                        let dest = Square::make_square(
-                            Rank::from_index(rank.to_index() - 2),
-                            File::from_index(file.to_index() - 1),
-                        );
-                        ChessMove::new(source, dest, None)
-                    }
-                    5 => {
-                        let dest = Square::make_square(
-                            Rank::from_index(rank.to_index() - 1),
-                            File::from_index(file.to_index() - 2),
-                        );
-                        ChessMove::new(source, dest, None)
-                    }
-                    6 => {
-                        let dest = Square::make_square(
-                            Rank::from_index(rank.to_index() + 1),
-                            File::from_index(file.to_index() - 2),
-                        );
-                        ChessMove::new(source, dest, None)
-                    }
-                    7 => {
-                        let dest = Square::make_square(
-                            Rank::from_index(rank.to_index() + 2),
-                            File::from_index(file.to_index() - 1),
-                        );
-                        ChessMove::new(source, dest, None)
-                    }
-                    _ => unreachable!(),
-                };
+                return Some(ChessMove::new(source, dest, None));
             }
             index @ 64..=72 => {
                 // pawn underpromotion
                 let piece = (index - 64) / 3;
-                let way = (index - 64) % 3;
+                let way = PawnPromotionWay::from_index(((index - 64) % 3) as u8);
+                let dest_rank = if board.color_on(source) == Some(Color::White) {
+                    Rank::Eighth
+                } else {
+                    Rank::First
+                };
 
                 let target_piece = match piece {
                     0 => Piece::Knight,
@@ -295,19 +424,24 @@ impl Chess {
                     _ => unreachable!(),
                 };
                 let dest = match way {
-                    0 => Square::make_square(Rank::from_index(rank.to_index() + 1), file),
-                    1 => Square::make_square(
-                        Rank::from_index(rank.to_index() + 1),
-                        File::from_index(file.to_index() + 1),
-                    ),
-                    2 => Square::make_square(
-                        Rank::from_index(rank.to_index() + 1),
-                        File::from_index(file.to_index() - 1),
-                    ),
-                    _ => unreachable!(),
+                    PawnPromotionWay::NorthOrSouth => Square::make_square(dest_rank, file),
+                    PawnPromotionWay::East => {
+                        if file.to_index() == 7 {
+                            return None;
+                        }
+
+                        Square::make_square(dest_rank, File::from_index(file.to_index() + 1))
+                    }
+                    PawnPromotionWay::West => {
+                        if file.to_index() == 0 {
+                            return None;
+                        }
+
+                        Square::make_square(dest_rank, File::from_index(file.to_index() - 1))
+                    }
                 };
 
-                return ChessMove::new(source, dest, Some(target_piece));
+                return Some(ChessMove::new(source, dest, Some(target_piece)));
             }
             _ => unreachable!(),
         }
@@ -389,12 +523,16 @@ impl Game for Chess {
 
     fn is_action_available(&self, action: usize) -> bool {
         let board = self.chess.current_position();
-        let chess_move = Self::index_to_move(action);
+        let chess_move = match Self::index_to_move(&board, action) {
+            Some(chess_move) => chess_move,
+            None => return false,
+        };
         board.legal(chess_move)
     }
 
     fn take_action(&mut self, action: usize) -> Option<Status> {
-        let chess_move = Self::index_to_move(action);
+        let board = self.chess.current_position();
+        let chess_move = Self::index_to_move(&board, action)?;
 
         if !self.chess.make_move(chess_move) {
             return None;
@@ -430,18 +568,16 @@ impl SerdeGame for Chess {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
+    use std::{collections::HashSet, str::FromStr};
 
-    #[test]
-    fn test_encoding() {
-        let chess = Chess::new();
-        let move_gen = MoveGen::new_legal(&chess.chess.current_position());
+    fn test_encoding(board: Board) {
+        let move_gen = MoveGen::new_legal(&board);
         let count = move_gen.len();
         let mut indices = HashSet::with_capacity(count);
 
         for chess_move in move_gen {
             let index = Chess::move_to_index(chess_move);
-            let chess_move2 = Chess::index_to_move(index);
+            let chess_move2 = Chess::index_to_move(&board, index).unwrap();
 
             assert_eq!(chess_move, chess_move2);
 
@@ -449,5 +585,42 @@ mod tests {
         }
 
         assert_eq!(indices.len(), count);
+    }
+
+    #[test]
+    fn test_encoding_initial() {
+        test_encoding(Board::default());
+    }
+
+    #[test]
+    fn test_encoding_fen_1() {
+        test_encoding(
+            Board::from_str("r2qr1k1/1b5p/ppn1pbp1/1B1p4/3P4/P4NP1/1P1NQPP1/3R1RK1 w - - 0 19")
+                .unwrap(),
+        );
+    }
+
+    #[test]
+    fn test_encoding_fen_2() {
+        test_encoding(
+            Board::from_str("2b5/p2NBp1p/1bp1nPPr/3P4/2pRnr1P/1k1B1Ppp/1P1P1pQP/Rq1N3K b - - 0 1")
+                .unwrap(),
+        );
+    }
+
+    #[test]
+    fn test_encoding_fen_3() {
+        test_encoding(
+            Board::from_str("2qb3R/rn3kPB/p4R1p/P2P2bK/2p1P3/1PBPp1pP/1NrppPp1/3N2Q1 b - - 0 1")
+                .unwrap(),
+        );
+    }
+
+    #[test]
+    fn test_encoding_fen_4() {
+        test_encoding(
+            Board::from_str("1K1N4/R3b3/qP1P2pp/PP1PrBB1/p2np1b1/2pnPPpp/pP1Rr1N1/2k3Q1 b - - 0 1")
+                .unwrap(),
+        );
     }
 }
