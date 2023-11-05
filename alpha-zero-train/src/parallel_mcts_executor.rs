@@ -1,7 +1,4 @@
-use crate::{
-    agents::AlphaZeroAgent,
-    encode::{encode_nn_input, EncodingPerspective},
-};
+use crate::{agents::AlphaZeroAgent, encode::encode_nn_input};
 use game::{Game, Status};
 use log::trace;
 use mcts::node::{Node, NodePtr};
@@ -86,7 +83,6 @@ impl ParallelMCTSExecutor {
                 let input = encode_nn_input(
                     device,
                     requests.len(),
-                    EncodingPerspective::Player,
                     requests.iter().map(|request| &request.node.game),
                 );
                 // we're inferencing to expand the tree, so it's important to pass `false` as the `train` argument

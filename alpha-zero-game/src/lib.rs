@@ -95,7 +95,7 @@ where
 
     /// Encode the current board state in form of a one-hot vector, in perspective of the current player (i.e. the player who is about to make a move).
     /// Returned vector should have shape of `BOARD_SHAPE`.
-    fn board_state(&self, flip_perspective: bool) -> BitVec;
+    fn board_state(&self) -> BitVec;
 
     /// Return the number of possible actions in the current state.
     fn possible_action_count(&self) -> usize;

@@ -109,10 +109,10 @@ impl Game for Gomoku9 {
         self.turn
     }
 
-    fn board_state(&self, flip_perspective: bool) -> BitVec {
+    fn board_state(&self) -> BitVec {
         let mut board = BitVec::repeat(false, Self::BOARD_SHAPE.size());
 
-        let offset = if (self.turn == Turn::Player1) ^ flip_perspective {
+        let offset = if self.turn == Turn::Player1 {
             0
         } else {
             Self::BOARD_SHAPE.single_layer_size()
@@ -124,7 +124,7 @@ impl Game for Gomoku9 {
             }
         }
 
-        let offset = if (self.turn == Turn::Player2) ^ flip_perspective {
+        let offset = if self.turn == Turn::Player2 {
             0
         } else {
             Self::BOARD_SHAPE.single_layer_size()

@@ -56,10 +56,10 @@ impl Game for TicTacToe {
         self.turn
     }
 
-    fn board_state(&self, flip_perspective: bool) -> BitVec {
+    fn board_state(&self) -> BitVec {
         let mut board = BitVec::repeat(false, Self::BOARD_SHAPE.size());
 
-        let offset = if (self.turn == Turn::Player1) ^ flip_perspective {
+        let offset = if self.turn == Turn::Player1 {
             0
         } else {
             Self::BOARD_SHAPE.single_layer_size()
@@ -71,7 +71,7 @@ impl Game for TicTacToe {
             }
         }
 
-        let offset = if (self.turn == Turn::Player2) ^ flip_perspective {
+        let offset = if self.turn == Turn::Player2 {
             0
         } else {
             Self::BOARD_SHAPE.single_layer_size()
@@ -212,7 +212,7 @@ mod tests {
         let game = TicTacToe::new();
         assert_eq!(game.turn(), Turn::Player1);
         assert_eq!(
-            game.board_state(false),
+            game.board_state(),
             bitvec![
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1,
             ]
@@ -225,11 +225,17 @@ mod tests {
 
         assert_eq!(game.turn(), Turn::Player1);
         assert_eq!(game.take_action(0), Some(Status::Ongoing));
-        assert_eq!(game.board_state(true)[0], true);
+        assert_eq!(
+            game.board_state()[TicTacToe::BOARD_SHAPE.single_layer_size() + 0],
+            true
+        );
 
         assert_eq!(game.turn(), Turn::Player2);
         assert_eq!(game.take_action(2), Some(Status::Ongoing));
-        assert_eq!(game.board_state(true)[2], true);
+        assert_eq!(
+            game.board_state()[TicTacToe::BOARD_SHAPE.single_layer_size() + 2],
+            true
+        );
     }
 
     #[test]

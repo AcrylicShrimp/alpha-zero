@@ -2,19 +2,9 @@ use game::Game;
 use log::trace;
 use tch::{Device, Tensor};
 
-/// The perspective from which the game is encoded.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum EncodingPerspective {
-    /// The player's perspective whos turn it is.
-    Player,
-    /// The opponent's perspective.
-    Opponent,
-}
-
 pub fn encode_nn_input<'g, G>(
     device: Device,
     batch_size: usize,
-    perspective: EncodingPerspective,
     game_iter: impl Iterator<Item = &'g G>,
 ) -> Tensor
 where
@@ -25,7 +15,7 @@ where
     trace!("batch_size={}", batch_size);
 
     for (index, game) in game_iter.enumerate() {
-        let board = game.board_state(perspective == EncodingPerspective::Opponent);
+        let board = game.board_state();
         let dst = &mut input[index * G::BOARD_SHAPE.size()..(index + 1) * G::BOARD_SHAPE.size()];
 
         for (index, value) in board.into_iter().enumerate() {

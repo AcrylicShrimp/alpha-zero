@@ -1,7 +1,4 @@
-use crate::{
-    agent::Agent,
-    encode::{encode_nn_input, EncodingPerspective},
-};
+use crate::{agent::Agent, encode::encode_nn_input};
 use game::{Game, Status};
 use log::{trace, warn};
 use mcts::MCTS;
@@ -38,12 +35,7 @@ where
     /// Creates a new agent.
     pub fn new(device: Device, nn: &'n NN<G>) -> Self {
         let game = G::new();
-        let input = encode_nn_input(
-            device,
-            1,
-            EncodingPerspective::Player,
-            std::iter::once(&game),
-        );
+        let input = encode_nn_input(device, 1, std::iter::once(&game));
         let p_s = nn.forward_pi(&input).to(Device::Cpu);
         let mut p_s = Vec::<f32>::try_from(p_s.view([-1])).unwrap();
 
@@ -230,12 +222,7 @@ where
             return;
         };
 
-        let input = encode_nn_input(
-            self.device,
-            1,
-            EncodingPerspective::Player,
-            std::iter::once(&game),
-        );
+        let input = encode_nn_input(self.device, 1, std::iter::once(&game));
         let p_s = self.nn.forward_pi(&input).to(Device::Cpu);
         let mut p_s = Vec::<f32>::try_from(p_s.view([-1])).unwrap();
 

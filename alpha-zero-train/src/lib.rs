@@ -7,7 +7,7 @@ pub mod trajectory;
 use crate::{
     agent::Agent,
     agents::{ActionSamplingMode, AlphaZeroAgent},
-    encode::{encode_nn_input, encode_nn_targets, EncodingPerspective},
+    encode::{encode_nn_input, encode_nn_targets},
 };
 use agents::NaiveAgent;
 use game::{Game, Status, Turn};
@@ -665,7 +665,6 @@ where
         let input = encode_nn_input(
             self.config.device,
             trajectories.len(),
-            EncodingPerspective::Player,
             trajectories.iter().map(|t| &t.game),
         );
         let (z_target, policy_target) = encode_nn_targets::<G>(
