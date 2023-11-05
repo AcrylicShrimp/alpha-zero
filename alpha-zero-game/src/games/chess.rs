@@ -410,6 +410,12 @@ impl Game for Chess {
                 GameResult::DrawAccepted => Some(Status::Draw),
                 GameResult::DrawDeclared => Some(Status::Ongoing),
             },
+            None if self.chess.can_declare_draw() => {
+                // immediately accept the draw if 3-fold repetition or 50-move rule is met
+                self.chess.declare_draw();
+                self.chess.accept_draw();
+                Some(Status::Draw)
+            }
             None => Some(Status::Ongoing),
         }
     }
