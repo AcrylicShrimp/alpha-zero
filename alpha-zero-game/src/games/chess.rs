@@ -334,7 +334,7 @@ impl Game for Chess {
 
     fn board_state(&self) -> BitVec {
         let board = self.chess.current_position();
-        let mut state = BitVec::with_capacity(Self::BOARD_SHAPE.size());
+        let mut state = BitVec::repeat(false, Self::BOARD_SHAPE.size());
 
         for (piece_index, piece) in [
             Piece::Pawn,
