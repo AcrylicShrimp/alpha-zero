@@ -1,5 +1,5 @@
 use crate::{agents::AlphaZeroAgent, encode::encode_nn_input};
-use game::{Game, Status};
+use game::{Game, Status, Turn};
 use log::trace;
 use mcts::node::{Node, NodePtr};
 use nn::NN;
@@ -93,8 +93,12 @@ impl ParallelMCTSExecutor {
                 let mut pi = Vec::<f32>::try_from(pi.to(Device::Cpu).view([-1])).unwrap();
 
                 for (batch_index, request) in requests.iter().enumerate() {
-                    // the value should be negated because the value is from the perspective of the opponent
-                    let w_s_a = -v[batch_index];
+                    let mut w_s_a = v[batch_index];
+
+                    if request.parent_turn != request.node.game.turn() {
+                        // negate the value if the parent turn is different from the node's turn
+                        w_s_a = -w_s_a;
+                    }
 
                     let node = &*request.node;
                     let p_s = &mut pi[batch_index * G::POSSIBLE_ACTION_COUNT
@@ -142,6 +146,7 @@ struct NNEvalRequest<G>
 where
     G: Game,
 {
+    pub parent_turn: Turn,
     pub node: NodePtr<G>,
 }
 
@@ -265,7 +270,10 @@ where
                 child.propagate(z);
             }
             None => {
-                requests.push(NNEvalRequest { node: child });
+                requests.push(NNEvalRequest {
+                    parent_turn: node.game.turn(),
+                    node: child,
+                });
             }
         }
     }
