@@ -534,9 +534,7 @@ impl Game for Chess {
         let board = self.chess.current_position();
         let chess_move = Self::index_to_move(&board, action)?;
 
-        if !self.chess.make_move(chess_move) {
-            return None;
-        }
+        self.chess.make_move(chess_move);
 
         match self.chess.result() {
             Some(status) => match status {
