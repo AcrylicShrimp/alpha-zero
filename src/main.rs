@@ -19,35 +19,35 @@ fn main() {
         Device::Cpu
     };
 
-    let mut trainer = Trainer::<game::games::Gomoku9>::new(TrainerConfig {
+    let mut trainer = Trainer::<game::games::Chess>::new(TrainerConfig {
         device,
         mcts_executor_config: MCTSExecutorConfig { num_threads: None },
         nn_config: NNConfig {
-            residual_blocks: 7,
+            residual_blocks: 15,
             residual_block_channels: 256,
             residual_block_mid_channels: None,
             fc0_channels: 512,
             fc1_channels: 512,
         },
         nn_optimizer_config: NNOptimizerConfig { lr: 0.001f64 },
-        replay_buffer_size: 100000,
-        episodes: 100,
-        mcts_count: 400,
+        replay_buffer_size: 500000,
+        episodes: 1000,
+        mcts_count: 800,
         batch_size: 4,
         c_puct: 1f32,
         alpha: 0.03f32,
         epsilon: 0.25f32,
         temperature: 1f32,
         temperature_threshold: 30,
-        parameter_update_count: 400,
-        parameter_update_batch_size: 64,
+        parameter_update_count: 1600,
+        parameter_update_batch_size: 128,
         match_count: 100,
         nn_save_config: Some(TrainerNNSaveConfig {
-            path: "saves/alpha-zero-gomoku9-adam".into(),
-            backup_interval: Some(50),
+            path: "saves/alpha-zero-chess-adam".into(),
+            backup_interval: Some(100),
         }),
     })
     .unwrap();
 
-    trainer.train(1000);
+    trainer.train(100000);
 }
