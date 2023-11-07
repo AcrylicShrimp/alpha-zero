@@ -24,6 +24,7 @@ where
     optimizer: Optimizer,
     gradient_scale: f32,
     step_count: usize,
+    master_grad_created: bool,
 }
 
 impl<G> NNOptimizer<G>
@@ -45,6 +46,7 @@ where
             // default value, but can be changed
             gradient_scale: (2 << 15) as f32,
             step_count: 0,
+            master_grad_created: false,
         })
     }
 
@@ -65,13 +67,27 @@ where
     pub fn step<'g>(
         &mut self,
         batch_size: usize,
-        game_iter: impl Iterator<Item = &'g G>,
-        z_iter: impl Iterator<Item = f32>,
-        policy_iter: impl Iterator<Item = &'g [f32]>,
+        game_iter: impl Iterator<Item = &'g G> + Clone,
+        z_iter: impl Iterator<Item = f32> + Clone,
+        policy_iter: impl Iterator<Item = &'g [f32]> + Clone,
     ) -> (f32, f32, f32)
     where
         G: 'g,
     {
+        if batch_size == 0 {
+            return (0f32, 0f32, 0f32);
+        }
+
+        if !self.master_grad_created {
+            self.nn.run_backward_on_master(
+                1,
+                std::iter::once(game_iter.clone().next().unwrap()),
+                std::iter::once(z_iter.clone().next().unwrap()),
+                std::iter::once(policy_iter.clone().next().unwrap()),
+            );
+            self.master_grad_created = true;
+        }
+
         let (v_loss, pi_loss) = self
             .nn
             .loss(true, batch_size, game_iter, z_iter, policy_iter);
@@ -80,7 +96,7 @@ where
         let scaled_loss = &loss * &gradient_scale;
 
         // zero out gradients for fp16 weights
-        for param in &mut self.nn.vs_cloned().trainable_variables() {
+        for (_, param) in &mut self.nn.vs_cloned().variables() {
             param.zero_grad();
         }
 
@@ -89,7 +105,7 @@ where
 
         let mut skip_update = false;
 
-        for param in &self.nn.vs_cloned().trainable_variables() {
+        for (_, param) in &self.nn.vs_cloned().variables() {
             let grad = param.grad();
 
             if !grad.defined() {
@@ -120,17 +136,12 @@ where
                 let grad_cloned = param_cloned.grad();
                 let mut grad_master = param_master.grad();
 
-                if !grad_cloned.defined() || !grad_master.defined() {
-                    continue;
-                }
-
                 grad_master.copy_(&grad_cloned);
                 let _ = grad_master.divide_(&gradient_scale);
             }
 
             // now gradients are prepared for fp32 weights, run optimizer
             self.optimizer.step();
-
             self.step_count += 1;
 
             if self.config.gradient_scale_update_interval <= self.step_count {
@@ -138,6 +149,9 @@ where
                 self.gradient_scale *= 2f32;
                 self.step_count = 0;
             }
+
+            // update fp16 weights
+            self.nn.copy_weights_to_fp16().unwrap();
         }
 
         (

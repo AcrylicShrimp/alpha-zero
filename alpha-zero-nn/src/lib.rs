@@ -124,18 +124,13 @@ where
         self.vs_cloned.float();
         self.vs_cloned.copy(&self.vs_master)?;
 
-        match self.config.kind {
-            Kind::Half => {
-                self.vs_cloned.half();
-            }
-            Kind::Double => {
-                self.vs_cloned.double();
-            }
-            Kind::BFloat16 => {
-                self.vs_cloned.bfloat16();
-            }
-            _ => {}
-        }
+        Ok(())
+    }
+
+    /// Copies the weights from the master model to the cloned model.
+    pub fn copy_weights_to_fp16(&mut self) -> Result<(), TchError> {
+        self.vs_cloned.float();
+        self.vs_cloned.copy(&self.vs_master)?;
 
         Ok(())
     }
@@ -195,6 +190,34 @@ where
             pi.cross_entropy_loss::<&Tensor>(&policy_target, None, Reduction::Mean, -100, 0.0);
 
         (v_loss, pi_loss)
+    }
+
+    /// Runs a backward pass on the master model to ensure that all trainable parameters have a gradient.
+    pub fn run_backward_on_master<'g>(
+        &self,
+        batch_size: usize,
+        game_iter: impl Iterator<Item = &'g G>,
+        z_iter: impl Iterator<Item = f32>,
+        policy_iter: impl Iterator<Item = &'g [f32]>,
+    ) where
+        G: 'g,
+    {
+        let input = self.encode_input(batch_size, game_iter);
+        let (v, pi) = self.master.forward(&input, true);
+        let (z_target, policy_target) = self.encode_targets(batch_size, z_iter, policy_iter);
+
+        let z_target = z_target.view([-1, 1]).to_kind(self.config.kind);
+        let policy_target = policy_target
+            .view([-1, G::POSSIBLE_ACTION_COUNT as i64])
+            .to_kind(self.config.kind);
+
+        let v_loss = v.mse_loss(&z_target, Reduction::Mean);
+        let pi_loss =
+            pi.cross_entropy_loss::<&Tensor>(&policy_target, None, Reduction::Mean, -100, 0.0);
+
+        let loss = &v_loss + &pi_loss;
+
+        loss.backward();
     }
 
     /// Encodes the input for the given batch.
