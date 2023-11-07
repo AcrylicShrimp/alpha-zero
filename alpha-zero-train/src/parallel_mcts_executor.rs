@@ -1,4 +1,4 @@
-use crate::{agents::AlphaZeroAgent, encode::encode_nn_input};
+use crate::agents::AlphaZeroAgent;
 use game::{Game, Status, Turn};
 use log::trace;
 use mcts::node::{Node, NodePtr};
@@ -46,7 +46,6 @@ impl ParallelMCTSExecutor {
 
     pub fn execute<G>(
         &self,
-        device: Device,
         count: usize,
         batch_size: usize,
         c_puct: f32,
@@ -80,14 +79,13 @@ impl ParallelMCTSExecutor {
 
                 trace!("requests.len()={}", requests.len());
 
-                let input = encode_nn_input(
-                    device,
+                // we're inferencing to expand the tree, so it's important to pass `false` as the `train` argument
+                // this will ensure that the batch norm layers don't update their running statistics
+                let (v, pi) = nn.forward(
+                    false,
                     requests.len(),
                     requests.iter().map(|request| &request.node.game),
                 );
-                // we're inferencing to expand the tree, so it's important to pass `false` as the `train` argument
-                // this will ensure that the batch norm layers don't update their running statistics
-                let (v, pi) = nn.forward(&input, false);
 
                 let v = Vec::<f32>::try_from(v.to(Device::Cpu).view([-1])).unwrap();
                 let mut pi = Vec::<f32>::try_from(pi.to(Device::Cpu).view([-1])).unwrap();

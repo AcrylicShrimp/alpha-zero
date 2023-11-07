@@ -1,4 +1,5 @@
 /target
 .DS_Store
 .vscode/
-saves/
+configs/*.toml
+saves/*.ot

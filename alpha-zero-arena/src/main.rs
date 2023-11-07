@@ -3,7 +3,8 @@ mod arena;
 use arena::Arena;
 use game::games::Gomoku9;
 use nn::{NNConfig, NN};
-use tch::{nn::VarStore, Device};
+use std::io::Cursor;
+use tch::{Device, Kind};
 
 fn main() {
     let device = if tch::Cuda::is_available() {
@@ -17,20 +18,19 @@ fn main() {
         Device::Cpu
     };
 
-    let mut vs = VarStore::new(device);
-    let nn = NN::new(
-        &vs.root(),
-        NNConfig {
-            residual_blocks: 7,
-            residual_block_channels: 256,
-            residual_block_mid_channels: None,
-            fc0_channels: 512,
-            fc1_channels: 512,
-        },
-    );
-    let arena = Arena::<Gomoku9>::new(device, nn);
+    let mut nn = NN::new(NNConfig {
+        device,
+        kind: Kind::Float,
+        residual_blocks: 7,
+        residual_block_channels: 256,
+        fc0_channels: 512,
+        fc1_channels: 512,
+    });
 
-    vs.load("saves/alpha-zero-gomoku9-adam.ot").unwrap();
+    let weights = Cursor::new(std::fs::read("saves/alpha-zero-gomoku9-adam.ot").unwrap());
+    nn.load_weights(weights).unwrap();
+
+    let arena = Arena::<Gomoku9>::new(nn);
 
     loop {
         println!("=============================================");

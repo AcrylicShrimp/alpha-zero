@@ -1,4 +1,4 @@
-use crate::{agent::Agent, encode::encode_nn_input};
+use crate::agent::Agent;
 use game::{Game, Status};
 use log::{trace, warn};
 use mcts::MCTS;
@@ -23,7 +23,6 @@ pub struct AlphaZeroAgent<'n, G>
 where
     G: Game,
 {
-    device: Device,
     nn: &'n NN<G>,
     mcts: MCTS<G>,
 }
@@ -33,10 +32,11 @@ where
     G: Game,
 {
     /// Creates a new agent.
-    pub fn new(device: Device, nn: &'n NN<G>) -> Self {
+    pub fn new(nn: &'n NN<G>) -> Self {
         let game = G::new();
-        let input = encode_nn_input(device, 1, std::iter::once(&game));
-        let p_s = nn.forward_pi(&input).to(Device::Cpu);
+        let p_s = nn
+            .forward_pi(false, 1, std::iter::once(&game))
+            .to(Device::Cpu);
         let mut p_s = Vec::<f32>::try_from(p_s.view([-1])).unwrap();
 
         for action in 0..G::POSSIBLE_ACTION_COUNT {
@@ -60,8 +60,6 @@ where
         }
 
         Self {
-            // assume that the game is not over at the beginning
-            device,
             nn,
             mcts: MCTS::new(p_s, game, None),
         }
@@ -222,8 +220,10 @@ where
             return;
         };
 
-        let input = encode_nn_input(self.device, 1, std::iter::once(&game));
-        let p_s = self.nn.forward_pi(&input).to(Device::Cpu);
+        let p_s = self
+            .nn
+            .forward_pi(false, 1, std::iter::once(&game))
+            .to(Device::Cpu);
         let mut p_s = Vec::<f32>::try_from(p_s.view([-1])).unwrap();
 
         for action in 0..G::POSSIBLE_ACTION_COUNT {

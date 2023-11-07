@@ -1,13 +1,11 @@
 pub mod agent;
 pub mod agents;
-pub mod encode;
 pub mod parallel_mcts_executor;
 pub mod trajectory;
 
 use crate::{
     agent::Agent,
     agents::{ActionSamplingMode, AlphaZeroAgent},
-    encode::{encode_nn_input, encode_nn_targets},
 };
 use agents::NaiveAgent;
 use game::{Game, Status, Turn};
@@ -21,12 +19,10 @@ use parallel_mcts_executor::{MCTSExecutorConfig, ParallelMCTSExecutor};
 use rand::{seq::IteratorRandom, thread_rng};
 use std::{
     collections::VecDeque,
+    io::Cursor,
     path::{Path, PathBuf},
 };
-use tch::{
-    nn::{Adam, VarStore},
-    Device,
-};
+use tch::{nn::Adam, Device};
 use thiserror::Error;
 use trajectory::Trajectory;
 
@@ -36,6 +32,8 @@ pub enum TrainerBuildError {
     ThreadPoolBuildError(#[from] rayon::ThreadPoolBuildError),
     #[error("failed to build neural network optimizer: {0}")]
     TchError(#[from] tch::TchError),
+    #[error("io error: {0}")]
+    IOError(#[from] std::io::Error),
 }
 
 /// Neural network save/load configuration.
@@ -54,12 +52,12 @@ pub struct TrainerNNSaveConfig {
 pub struct TrainerConfig {
     /// Device to run NN on.
     pub device: Device,
-    /// MCTS executor configuration.
-    pub mcts_executor_config: MCTSExecutorConfig,
     /// Neural network configuration.
     pub nn_config: NNConfig,
     /// Neural network optimizer configuration.
     pub nn_optimizer_config: NNOptimizerConfig,
+    /// MCTS executor configuration.
+    pub mcts_executor_config: MCTSExecutorConfig,
     /// Number of trajectories to keep. Rest will be discarded in chronological order.
     pub replay_buffer_size: usize,
     /// Number of episodes to play.
@@ -96,8 +94,6 @@ where
 {
     /// Trainer configuration.
     config: TrainerConfig,
-    /// VarStore for the neural network.
-    vs: VarStore,
     /// Neural network that is being trained.
     nn_optimizer: NNOptimizer<G>,
     /// Parallel MCTS executor.
@@ -110,10 +106,9 @@ where
 {
     /// Creates a new trainer.
     pub fn new(config: TrainerConfig) -> Result<Self, TrainerBuildError> {
-        let mut vs = VarStore::new(config.device);
-        let nn = NN::new(&vs.root(), config.nn_config.clone());
-        let nn_optimizer =
-            NNOptimizer::new(&vs, config.nn_optimizer_config.clone(), nn, Adam::default())?;
+        let nn = NN::new(config.nn_config.clone());
+        let mut nn_optimizer =
+            NNOptimizer::new(config.nn_optimizer_config.clone(), nn, Adam::default())?;
         let mcts_executor = ParallelMCTSExecutor::new(config.mcts_executor_config.clone())?;
 
         if let Some(config) = &config.nn_save_config {
@@ -121,28 +116,26 @@ where
 
             if path.is_file() {
                 info!("loading neural network from `{}`", path.display());
-                vs.load(path)?;
+
+                let weights = Cursor::new(std::fs::read(&path)?);
+                nn_optimizer.nn_mut().load_weights(weights)?;
             } else {
                 let path = path.with_extension("bak.ot");
 
                 if path.is_file() {
                     info!("loading neural network from `{}`", path.display());
-                    vs.load(path)?;
+
+                    let weights = Cursor::new(std::fs::read(&path)?);
+                    nn_optimizer.nn_mut().load_weights(weights)?;
                 }
             }
         }
 
         Ok(Self {
             config,
-            vs,
             nn_optimizer,
             mcts_executor,
         })
-    }
-
-    /// Returns a reference to the VarStore.
-    pub fn vs(&self) -> &VarStore {
-        &self.vs
     }
 
     /// Returns a reference to the neural network.
@@ -254,7 +247,7 @@ where
             if let Some(config) = &self.config.nn_save_config {
                 let path = config.path.with_extension("ot");
 
-                match self.vs.save(&path) {
+                match self.nn_optimizer.nn().vs_master().save(&path) {
                     Ok(_) => {
                         info!("model has been saved to `{}`", path.display());
                     }
@@ -271,7 +264,7 @@ where
                     if iter % backup_interval == 0 {
                         let path = path.with_extension("bak.ot");
 
-                        match self.vs.save(&path) {
+                        match self.nn_optimizer.nn().vs_master().save(&path) {
                             Ok(_) => {
                                 info!("model backup has been saved to `{}`", path.display());
                             }
@@ -308,10 +301,7 @@ where
 
         for _ in 0..match_count {
             agents_1.push(NaiveAgent::<G>::new());
-            agents_2.push(AlphaZeroAgent::<G>::new(
-                self.config.device,
-                self.nn_optimizer.nn(),
-            ));
+            agents_2.push(AlphaZeroAgent::<G>::new(self.nn_optimizer.nn()));
         }
 
         while !agents_1.is_empty() {
@@ -321,7 +311,6 @@ where
 
             if turn == Turn::Player2 {
                 self.mcts_executor.execute(
-                    self.config.device,
                     self.config.mcts_count,
                     self.config.batch_size,
                     self.config.c_puct,
@@ -392,16 +381,29 @@ where
         path: impl AsRef<Path>,
         match_count: usize,
     ) -> Option<(u32, u32, u32)> {
-        let mut vs = VarStore::new(self.config.device);
-        let old_version_nn = NN::new(&vs.root(), self.config.nn_config.clone());
+        let mut old_version_nn = NN::new(self.config.nn_config.clone());
 
-        if let Err(err) = vs.load(path.as_ref()) {
-            warn!(
-                "failed to load neural network backup from `{}` due to: {}",
-                path.as_ref().display(),
-                err
-            );
-            return None;
+        {
+            let weights = match std::fs::read(path.as_ref()) {
+                Ok(weights) => Cursor::new(weights),
+                Err(err) => {
+                    warn!(
+                        "failed to load neural network backup from `{}` due to: {}",
+                        path.as_ref().display(),
+                        err
+                    );
+                    return None;
+                }
+            };
+
+            if let Err(err) = old_version_nn.load_weights(weights) {
+                warn!(
+                    "failed to load neural network backup from `{}` due to: {}",
+                    path.as_ref().display(),
+                    err
+                );
+                return None;
+            }
         }
 
         let mut player1_won = 0;
@@ -420,14 +422,8 @@ where
         progress_bar.tick();
 
         for _ in 0..match_count {
-            agents_1.push(AlphaZeroAgent::<G>::new(
-                self.config.device,
-                &old_version_nn,
-            ));
-            agents_2.push(AlphaZeroAgent::<G>::new(
-                self.config.device,
-                self.nn_optimizer.nn(),
-            ));
+            agents_1.push(AlphaZeroAgent::<G>::new(&old_version_nn));
+            agents_2.push(AlphaZeroAgent::<G>::new(self.nn_optimizer.nn()));
         }
 
         while !agents_1.is_empty() {
@@ -436,7 +432,6 @@ where
             trace!("turn={:?}", turn);
 
             self.mcts_executor.execute(
-                self.config.device,
                 self.config.mcts_count,
                 self.config.batch_size,
                 self.config.c_puct,
@@ -516,14 +511,8 @@ where
         progress_bar.tick();
 
         for _ in 0..episodes {
-            agents_1.push(AlphaZeroAgent::<G>::new(
-                self.config.device,
-                self.nn_optimizer.nn(),
-            ));
-            agents_2.push(AlphaZeroAgent::<G>::new(
-                self.config.device,
-                self.nn_optimizer.nn(),
-            ));
+            agents_1.push(AlphaZeroAgent::<G>::new(self.nn_optimizer.nn()));
+            agents_2.push(AlphaZeroAgent::<G>::new(self.nn_optimizer.nn()));
             trajectories_set.push(Vec::with_capacity(64));
         }
 
@@ -531,7 +520,6 @@ where
             let turn = agents_1[0].mcts().root().game.turn();
 
             self.mcts_executor.execute(
-                self.config.device,
                 self.config.mcts_count,
                 self.config.batch_size,
                 self.config.c_puct,
@@ -662,18 +650,11 @@ where
 
     /// Trains the neural network using the trajectories.
     fn train_nn(&mut self, trajectories: &[&Trajectory<G>]) -> (f32, f32, f32) {
-        let input = encode_nn_input(
-            self.config.device,
+        self.nn_optimizer.step(
             trajectories.len(),
             trajectories.iter().map(|t| &t.game),
-        );
-        let (z_target, policy_target) = encode_nn_targets::<G>(
-            self.config.device,
-            trajectories.len(),
             trajectories.iter().map(|t| t.z),
             trajectories.iter().map(|t| t.policy.as_slice()),
-        );
-
-        self.nn_optimizer.step(&input, &z_target, &policy_target)
+        )
     }
 }

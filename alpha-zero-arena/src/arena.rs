@@ -1,10 +1,8 @@
 use game::{Game, PlayableGame, Status, Turn};
 use nn::NN;
-use tch::Device;
 use train::{
     agent::Agent,
     agents::{ActionSamplingMode, AlphaZeroAgent},
-    encode::encode_nn_input,
     parallel_mcts_executor::{MCTSExecutorConfig, ParallelMCTSExecutor},
 };
 
@@ -12,7 +10,6 @@ pub struct Arena<G>
 where
     G: Game + PlayableGame,
 {
-    device: Device,
     nn: NN<G>,
     mcts_executor: ParallelMCTSExecutor,
 }
@@ -21,9 +18,8 @@ impl<G> Arena<G>
 where
     G: Game + PlayableGame,
 {
-    pub fn new(device: Device, nn: NN<G>) -> Self {
+    pub fn new(nn: NN<G>) -> Self {
         Self {
-            device,
             nn,
             mcts_executor: ParallelMCTSExecutor::new(MCTSExecutorConfig { num_threads: None })
                 .unwrap(),
@@ -32,11 +28,10 @@ where
 
     pub fn play(&self) {
         let mut game = G::new();
-        let mut agent = vec![AlphaZeroAgent::new(self.device, &self.nn)];
+        let mut agent = vec![AlphaZeroAgent::new(&self.nn)];
 
         loop {
-            let input = encode_nn_input(self.device, 1, std::iter::once(&game));
-            let (v, _) = self.nn.forward(&input, false);
+            let (v, _) = self.nn.forward(false, 1, std::iter::once(&game));
             println!("v={}", v.double_value(&[]));
 
             let action = match game.turn() {
@@ -61,16 +56,8 @@ where
                     println!("invalid action, try again");
                 },
                 Turn::Player2 => {
-                    self.mcts_executor.execute(
-                        self.device,
-                        1600,
-                        1,
-                        1f32,
-                        0.03f32,
-                        0.25f32,
-                        &self.nn,
-                        &agent,
-                    );
+                    self.mcts_executor
+                        .execute(1600, 1, 1f32, 0.03f32, 0.25f32, &self.nn, &agent);
                     agent[0]
                         .sample_action_from_policy(ActionSamplingMode::Best)
                         .unwrap()
