@@ -2,7 +2,7 @@ use crate::NN;
 use game::Game;
 use tch::{
     nn::{Optimizer, OptimizerConfig},
-    Kind, TchError, Tensor,
+    TchError, Tensor,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -96,8 +96,8 @@ where
                 continue;
             }
 
-            if bool::try_from(grad.isinf().max()).unwrap()
-                || bool::try_from(grad.isnan().max()).unwrap()
+            if (grad.isinf().any().int64_value(&[]) != 0)
+                || (grad.isnan().any().int64_value(&[]) != 0)
             {
                 // inf or nan detected, use lower gradient scale and skip weight update
                 self.gradient_scale *= 0.5f32;
@@ -107,6 +107,7 @@ where
         }
 
         if !skip_update {
+            // copy unscaled gradients into master
             for (param_cloned, param_master) in self
                 .nn
                 .vs_cloned()
@@ -121,9 +122,11 @@ where
                     continue;
                 }
 
-                // copy unscaled gradients into master
-                grad_master.copy_(&(grad_cloned.to_kind(Kind::Float) / &gradient_scale));
+                grad_master.copy_(&(grad_cloned / &gradient_scale));
             }
+
+            // now gradients are prepared for fp32 weights, run optimizer
+            self.optimizer.step();
 
             self.step_count += 1;
 
@@ -133,9 +136,6 @@ where
                 self.step_count = 0;
             }
         }
-
-        // now gradients are prepared for fp32 weights, run optimizer
-        self.optimizer.step();
 
         (
             f32::try_from(loss).unwrap(),
