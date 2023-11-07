@@ -93,8 +93,13 @@ where
                     Some((action, score))
                 })
                 .max_by(|(_, score1), (_, score2)| f32::total_cmp(score1, score2))
-                .unwrap()
-                .0;
+                .map(|(action, _)| action);
+            let action = match action {
+                Some(action) => action,
+                None => {
+                    return (node, 0);
+                }
+            };
 
             let child_index = children
                 .iter()
