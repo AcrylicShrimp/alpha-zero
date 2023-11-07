@@ -124,7 +124,8 @@ where
                     continue;
                 }
 
-                grad_master.copy_(&(grad_cloned / &gradient_scale));
+                grad_master.copy_(&grad_cloned);
+                let _ = grad_master.divide_(&gradient_scale);
             }
 
             // now gradients are prepared for fp32 weights, run optimizer
