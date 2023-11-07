@@ -151,7 +151,7 @@ where
             }
 
             // update fp16 weights
-            self.nn.copy_weights_to_fp16().unwrap();
+            self.nn.copy_weights_to_cloned().unwrap();
         }
 
         (
