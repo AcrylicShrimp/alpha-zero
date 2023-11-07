@@ -1,9 +1,9 @@
 use crate::agents::AlphaZeroAgent;
 use game::{Game, Status, Turn};
 use log::trace;
-use mcts::node::{Node, NodePtr};
+use mcts::node::{Node, NodeOrAction, NodePtr};
 use nn::NN;
-use rand::{seq::IteratorRandom, thread_rng};
+use rand::thread_rng;
 use rand_distr::{Dirichlet, Distribution};
 use rayon::{
     prelude::{IntoParallelRefIterator, ParallelIterator},
@@ -190,15 +190,15 @@ where
     let mut requests = Vec::with_capacity(batch_size);
 
     for _ in 0..batch_size {
-        let node = agent.mcts().select_leaf(|parent, children| {
-            let parent_n_s_a = parent.n_s_a.load(Ordering::Relaxed);
-            children
-                .iter()
-                .map(|child| compute_ucb1(parent_n_s_a, child, c_puct))
-                .enumerate()
-                .max_by(|(_, a), (_, b)| f32::total_cmp(a, b))
-                .unwrap()
-                .0
+        let (node, action) = agent.mcts().select_leaf(|parent, child| match child {
+            NodeOrAction::Node(child) => {
+                let parent_n_s_a = parent.n_s_a.load(Ordering::Relaxed);
+                compute_node_puct(parent_n_s_a, &child, c_puct)
+            }
+            NodeOrAction::Action(action) => {
+                let parent_n_s_a = parent.n_s_a.load(Ordering::Relaxed);
+                compute_action_puct(parent, parent_n_s_a, action, c_puct)
+            }
         });
 
         if let Some(z) = node.z {
@@ -206,26 +206,6 @@ where
             node.propagate(z);
             continue;
         }
-
-        let mut possible_actions = node.game.possible_actions();
-
-        for children in node.children.read().iter() {
-            let action = children.action.unwrap();
-            possible_actions.set(action, false);
-        }
-
-        let action = possible_actions
-            .iter()
-            .enumerate()
-            .filter(|(_, available)| **available)
-            .map(|(action, _)| action)
-            .choose(&mut rng);
-
-        let action = if let Some(action) = action {
-            action
-        } else {
-            continue;
-        };
 
         let mut game = node.game.clone();
         let turn = game.turn();
@@ -279,8 +259,8 @@ where
     requests
 }
 
-/// Compute the UCB1 value for the given node.
-fn compute_ucb1<G>(parent_n_s_a: u32, node: &Node<G>, c_puct: f32) -> f32
+/// Compute the PUCT value for the given node.
+fn compute_node_puct<G>(parent_n_s_a: u32, node: &Node<G>, c_puct: f32) -> f32
 where
     G: Game,
 {
@@ -290,4 +270,13 @@ where
     let p_s_a = node.p_s_a.load(Ordering::Relaxed);
     let bias = c_puct * p_s_a * (parent_n_s_a as f32).sqrt() / (1.0 + n_s_a);
     q_s_a + bias
+}
+
+/// Compute the PUCT value for the given action.
+fn compute_action_puct<G>(parent: &Node<G>, parent_n_s_a: u32, action: usize, c_puct: f32) -> f32
+where
+    G: Game,
+{
+    let p_s_a = parent.p_s.read()[action];
+    c_puct * p_s_a * (parent_n_s_a as f32).sqrt()
 }

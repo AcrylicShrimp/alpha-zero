@@ -8,6 +8,15 @@ use std::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum NodeOrAction<G>
+where
+    G: Game,
+{
+    Node(NodePtr<G>),
+    Action(usize),
+}
+
 /// Node in the MCTS tree.
 pub struct Node<G>
 where
@@ -62,26 +71,45 @@ where
         }
     }
 
-    /// Select a leaf node by using the given selector function.
-    pub fn select_leaf(&self, selector: impl Fn(&Self, &[NodePtr<G>]) -> usize) -> &Self {
+    /// Select a leaf node and highest scored action using the given selector function.
+    pub fn select_leaf(&self, score_fn: impl Fn(&Self, NodeOrAction<G>) -> f32) -> (&Self, usize) {
         let mut node = self;
         let mut children = self.children.read();
 
         loop {
-            if children.len() == 0 {
-                return node;
+            let action = (0..G::POSSIBLE_ACTION_COUNT)
+                .into_iter()
+                .filter_map(|action| {
+                    if !node.game.is_action_available(action) {
+                        return None;
+                    }
+
+                    let child = children.iter().find(|child| child.action == Some(action));
+                    let score = match child {
+                        Some(child) => score_fn(node, NodeOrAction::Node(child.clone())),
+                        None => score_fn(node, NodeOrAction::Action(action)),
+                    };
+
+                    Some((action, score))
+                })
+                .max_by(|(_, score1), (_, score2)| f32::total_cmp(score1, score2))
+                .unwrap()
+                .0;
+
+            let child_index = children
+                .iter()
+                .position(|child| child.action == Some(action));
+
+            match child_index {
+                Some(child_index) => {
+                    node = unsafe { children[child_index].ptr.as_ref() };
+                    let child_children = node.children.read();
+                    children = child_children;
+                }
+                None => {
+                    return (node, action);
+                }
             }
-
-            // if we have not reached the max number of children, return this node, since it is a leaf
-            if children.len() != node.maximum_children {
-                return node;
-            }
-
-            let index = selector(node, &children);
-
-            node = unsafe { children[index].ptr.as_ref() };
-            let child_children = node.children.read();
-            children = child_children;
         }
     }
 

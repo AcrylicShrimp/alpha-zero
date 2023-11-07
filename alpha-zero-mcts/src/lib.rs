@@ -6,6 +6,7 @@ use crate::{
     node_allocator::NodeAllocator,
 };
 use game::Game;
+use node::NodeOrAction;
 use parking_lot::Mutex;
 use std::ptr::NonNull;
 
@@ -39,9 +40,12 @@ where
         &*self.root
     }
 
-    /// Select a leaf node using the given selector function.
-    pub fn select_leaf(&self, selector: impl Fn(&Node<G>, &[NodePtr<G>]) -> usize) -> &Node<G> {
-        self.root().select_leaf(selector)
+    /// Select a leaf node and highest scored action using the given selector function.
+    pub fn select_leaf(
+        &self,
+        score_fn: impl Fn(&Node<G>, NodeOrAction<G>) -> f32,
+    ) -> (&Node<G>, usize) {
+        self.root().select_leaf(score_fn)
     }
 
     /// Expand the given action at the given node.
@@ -117,14 +121,14 @@ mod tests {
         let mut mcts = MCTS::new(p_s, game, None);
 
         let child = {
-            let node = mcts.select_leaf(|_, _| 0);
+            let (node, action) = mcts.select_leaf(|_, _| 0f32);
             let game = node.game.clone();
             let p_s = vec![
                 1f32 / game.possible_action_count() as f32;
                 game::games::TicTacToe::POSSIBLE_ACTION_COUNT
             ];
             let child = mcts
-                .expand(node, 0, p_s, mcts.root().game.clone(), None)
+                .expand(node, action, p_s, mcts.root().game.clone(), None)
                 .unwrap();
 
             child
