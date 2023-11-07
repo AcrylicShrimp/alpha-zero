@@ -103,6 +103,8 @@ where
                 self.gradient_scale *= 0.5f32;
                 self.step_count = 0;
                 skip_update = true;
+
+                break;
             }
         }
 
