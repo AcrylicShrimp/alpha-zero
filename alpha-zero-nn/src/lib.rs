@@ -206,10 +206,10 @@ where
         let (v, pi) = self.master.forward(&input, true);
         let (z_target, policy_target) = self.encode_targets(batch_size, z_iter, policy_iter);
 
-        let z_target = z_target.view([-1, 1]).to_kind(self.config.kind);
+        let z_target = z_target.view([-1, 1]).to_kind(Kind::Float);
         let policy_target = policy_target
             .view([-1, G::POSSIBLE_ACTION_COUNT as i64])
-            .to_kind(self.config.kind);
+            .to_kind(Kind::Float);
 
         let v_loss = v.mse_loss(&z_target, Reduction::Mean);
         let pi_loss =
