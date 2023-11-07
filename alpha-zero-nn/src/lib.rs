@@ -120,8 +120,6 @@ where
     /// Note that the weights are loaded into the master model and then copied to the cloned model.
     pub fn load_weights(&mut self, weights: impl Read + Seek) -> Result<(), TchError> {
         self.vs_master.load_from_stream(weights)?;
-
-        self.vs_cloned.float();
         self.vs_cloned.copy(&self.vs_master)?;
 
         Ok(())
@@ -129,7 +127,6 @@ where
 
     /// Copies the weights from the master model to the cloned model.
     pub fn copy_weights_to_fp16(&mut self) -> Result<(), TchError> {
-        self.vs_cloned.float();
         self.vs_cloned.copy(&self.vs_master)?;
 
         Ok(())
