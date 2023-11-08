@@ -2,7 +2,7 @@ use crate::NN;
 use game::Game;
 use tch::{
     nn::{Optimizer, OptimizerConfig},
-    TchError, Tensor,
+    Kind, TchError, Tensor,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -95,6 +95,8 @@ where
             .loss(true, batch_size, game_iter, z_iter, policy_iter);
         let loss = &v_loss + &pi_loss;
         let gradient_scale = Tensor::from_slice(&[self.gradient_scale]).to(self.nn.config().device);
+        let gradient_scale_inv =
+            Tensor::from_slice(&[1f32 / self.gradient_scale]).to(self.nn.config().device);
         let scaled_loss = &loss * &gradient_scale;
 
         // zero out gradients for fp16 weights
@@ -138,11 +140,11 @@ where
                 }
 
                 let param_cloned = params_cloned.get(&param_name).unwrap();
-                let grad_cloned = param_cloned.grad().detach();
+                let grad_cloned = param_cloned.grad();
                 let mut grad_master = param.grad();
 
-                grad_master.copy_(&grad_cloned);
-                let _ = grad_master.divide_(&gradient_scale);
+                grad_master
+                    .copy_(&(grad_cloned.detach().to_kind(Kind::Float) * &gradient_scale_inv));
             }
 
             // now gradients are prepared for fp32 weights, run optimizer
