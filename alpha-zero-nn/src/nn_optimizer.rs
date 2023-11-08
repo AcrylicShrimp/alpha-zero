@@ -197,7 +197,7 @@ mod tests {
         for param in &vs.trainable_variables() {
             let grad = param.grad();
 
-                let min = grad.min().double_value(&[]);
+            let min = grad.min().double_value(&[]);
             assert_eq!(min, 10f64);
         }
     }
