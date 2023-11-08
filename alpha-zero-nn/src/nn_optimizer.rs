@@ -10,6 +10,8 @@ use tch::{
 pub struct NNOptimizerConfig {
     /// The learning rate.
     pub lr: f64,
+    /// The maximum gradient norm.
+    pub gradient_clip_norm: f64,
     /// The number of training steps after which the gradient scale is updated.
     pub gradient_scale_update_interval: usize,
 }
@@ -105,12 +107,8 @@ where
 
         let mut skip_update = false;
 
-        for (_, param) in &self.nn.vs_cloned().variables() {
+        for param in &self.nn.vs_cloned().trainable_variables() {
             let grad = param.grad();
-
-            if !grad.defined() {
-                continue;
-            }
 
             if (grad.isinf().any().int64_value(&[]) != 0)
                 || (grad.isnan().any().int64_value(&[]) != 0)
@@ -141,6 +139,8 @@ where
             }
 
             // now gradients are prepared for fp32 weights, run optimizer
+            self.optimizer
+                .clip_grad_norm(self.config.gradient_clip_norm);
             self.optimizer.step();
             self.step_count += 1;
 
