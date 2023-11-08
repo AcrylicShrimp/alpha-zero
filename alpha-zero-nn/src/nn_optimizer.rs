@@ -172,32 +172,33 @@ where
 #[cfg(test)]
 mod tests {
     use tch::{
-        nn::{linear, VarStore},
-        Device,
+        nn::{linear, Module, VarStore},
+        Device, Tensor,
     };
 
     #[test]
     fn copy_gradient() {
         let vs = VarStore::new(Device::Cpu);
-        linear(vs.root(), 4, 4, Default::default());
+        let linear = linear(vs.root(), 4, 4, Default::default());
 
         assert!(0 < vs.trainable_variables().len());
 
-        for param in &mut vs.trainable_variables() {
-            let grad = param.grad();
+        let input = Tensor::randn(&[4, 4], tch::kind::FLOAT_CPU);
+        let output = linear.forward(&input).mean(None);
 
-            if grad.defined() {
-                let _ = param.grad().fill(1f64);
-            }
+        output.backward();
+
+        for param in &mut vs.trainable_variables() {
+            let mut grad = param.grad();
+            grad.copy_(&Tensor::from_slice(&[-100f32, -100f32, -100f32, -100f32]));
+            let _ = grad.divide_(&Tensor::from_slice(&[-10f32, -10f32, -10f32, -10f32]));
         }
 
         for param in &vs.trainable_variables() {
             let grad = param.grad();
 
-            if grad.defined() {
                 let min = grad.min().double_value(&[]);
-                assert_eq!(min, 1f64);
-            }
+            assert_eq!(min, 10f64);
         }
     }
 }
