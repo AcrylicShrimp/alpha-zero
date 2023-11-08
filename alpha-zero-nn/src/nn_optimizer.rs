@@ -138,7 +138,7 @@ where
                 }
 
                 let param_cloned = params_cloned.get(&param_name).unwrap();
-                let grad_cloned = param_cloned.grad();
+                let grad_cloned = param_cloned.grad().detach();
                 let mut grad_master = param.grad();
 
                 grad_master.copy_(&grad_cloned);
