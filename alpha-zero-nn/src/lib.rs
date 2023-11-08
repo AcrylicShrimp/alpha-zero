@@ -82,6 +82,9 @@ where
             _ => {}
         }
 
+        // copy the weights from the master model to the cloned model once
+        vs_cloned.copy(&vs_master).unwrap();
+
         Self {
             config,
             master,
