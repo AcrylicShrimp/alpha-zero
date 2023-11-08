@@ -107,8 +107,12 @@ where
 
         let mut skip_update = false;
 
-        for param in &self.nn.vs_cloned().trainable_variables() {
+        for (_, param) in &self.nn.vs_cloned().variables() {
             let grad = param.grad();
+
+            if !grad.defined() {
+                continue;
+            }
 
             if (grad.isinf().any().int64_value(&[]) != 0)
                 || (grad.isnan().any().int64_value(&[]) != 0)
@@ -124,15 +128,18 @@ where
 
         if !skip_update {
             // copy unscaled gradients into master
-            for (param_cloned, param_master) in self
-                .nn
-                .vs_cloned()
-                .trainable_variables()
-                .iter()
-                .zip(self.nn.vs_master().trainable_variables().iter())
-            {
+            let params_cloned = self.nn.vs_cloned().variables();
+
+            for (param_name, param) in self.nn.vs_master().variables() {
+                let grad = param.grad();
+
+                if !grad.defined() {
+                    continue;
+                }
+
+                let param_cloned = params_cloned.get(&param_name).unwrap();
                 let grad_cloned = param_cloned.grad();
-                let mut grad_master = param_master.grad();
+                let mut grad_master = param.grad();
 
                 grad_master.copy_(&grad_cloned);
                 let _ = grad_master.divide_(&gradient_scale);
