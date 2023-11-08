@@ -77,6 +77,10 @@ where
         let mut children = self.children.read();
 
         loop {
+            if node.z.is_some() {
+                return (node, 0);
+            }
+
             let action = (0..G::POSSIBLE_ACTION_COUNT)
                 .into_iter()
                 .filter_map(|action| {
