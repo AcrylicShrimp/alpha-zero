@@ -128,13 +128,6 @@ where
         Ok(())
     }
 
-    /// Copies the weights from the master model to the cloned model.
-    pub fn copy_weights_to_cloned(&mut self) -> Result<(), TchError> {
-        self.vs_cloned.copy(&self.vs_master)?;
-
-        Ok(())
-    }
-
     /// Computes the value and policy for the given batch.
     pub fn forward<'g>(
         &self,

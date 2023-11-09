@@ -2,7 +2,7 @@ use crate::NN;
 use game::Game;
 use tch::{
     nn::{Optimizer, OptimizerConfig},
-    Kind, TchError, Tensor,
+    no_grad, Kind, TchError, Tensor,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -97,7 +97,7 @@ where
         let gradient_scale = Tensor::from_slice(&[self.gradient_scale]).to(self.nn.config().device);
         let gradient_scale_inv =
             Tensor::from_slice(&[1f32 / self.gradient_scale]).to(self.nn.config().device);
-        let scaled_loss = &loss * &gradient_scale;
+        let scaled_loss = (&loss * &gradient_scale).to_kind(self.nn.config().kind);
 
         // zero out gradients for fp16 weights
         for (_, param) in &mut self.nn.vs_cloned().variables() {
@@ -130,21 +130,20 @@ where
 
         if !skip_update {
             // copy unscaled gradients into master
-            let params_cloned = self.nn.vs_cloned().variables();
-
-            for (param_name, param) in self.nn.vs_master().variables() {
-                let grad = param.grad();
-
-                if !grad.defined() {
-                    continue;
-                }
-
-                let param_cloned = params_cloned.get(&param_name).unwrap();
+            for (param_cloned, param_master) in self
+                .nn
+                .vs_cloned()
+                .trainable_variables()
+                .into_iter()
+                .zip(self.nn.vs_master().trainable_variables().into_iter())
+            {
                 let grad_cloned = param_cloned.grad();
-                let mut grad_master = param.grad();
+                let mut grad_master = param_master.grad();
 
-                grad_master
-                    .copy_(&(grad_cloned.detach().to_kind(Kind::Float) * &gradient_scale_inv));
+                no_grad(|| {
+                    grad_master
+                        .copy_(&(grad_cloned.detach().to_kind(Kind::Float) * &gradient_scale_inv));
+                });
             }
 
             // now gradients are prepared for fp32 weights, run optimizer
@@ -160,7 +159,17 @@ where
             }
 
             // update fp16 weights
-            self.nn.copy_weights_to_cloned().unwrap();
+            for (param_master, mut param_cloned) in self
+                .nn
+                .vs_master()
+                .trainable_variables()
+                .into_iter()
+                .zip(self.nn.vs_cloned().trainable_variables().into_iter())
+            {
+                no_grad(|| {
+                    param_cloned.copy_(&param_master.detach().to_kind(param_cloned.kind()));
+                });
+            }
         }
 
         (
