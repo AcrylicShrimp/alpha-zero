@@ -12,8 +12,6 @@ pub struct NNOptimizerConfig {
     pub lr: f64,
     /// The maximum gradient norm.
     pub gradient_clip_norm: f64,
-    /// The number of training steps after which the gradient scale is updated.
-    pub gradient_scale_update_interval: usize,
 }
 
 /// A neural network optimizer which supports mixed precision training.

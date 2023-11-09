@@ -32,7 +32,6 @@ fn main() {
         nn_optimizer_config: NNOptimizerConfig {
             lr: 0.001f64,
             gradient_clip_norm: 1f64,
-            gradient_scale_update_interval: 50,
         },
         replay_buffer_size: 500000,
         episodes: 10,
