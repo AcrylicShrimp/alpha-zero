@@ -181,7 +181,7 @@ where
             .view([-1, G::POSSIBLE_ACTION_COUNT as i64])
             .to_kind(Kind::Float);
 
-        let v_loss = v.mse_loss(&z_target, Reduction::Mean);
+        let v_loss = (&v - &z_target).square().mean(Kind::Float);
         let pi_loss =
             pi.cross_entropy_loss::<&Tensor>(&policy_target, None, Reduction::Mean, -100, 0.0);
 
@@ -207,7 +207,7 @@ where
             .view([-1, G::POSSIBLE_ACTION_COUNT as i64])
             .to_kind(Kind::Float);
 
-        let v_loss = v.mse_loss(&z_target, Reduction::Mean);
+        let v_loss = (&v - &z_target).square().mean(Kind::Float);
         let pi_loss =
             pi.cross_entropy_loss::<&Tensor>(&policy_target, None, Reduction::Mean, -100, 0.0);
 
