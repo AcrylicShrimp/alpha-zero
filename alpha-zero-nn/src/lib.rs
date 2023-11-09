@@ -14,8 +14,6 @@ use tch::{nn::VarStore, Device, Kind, Reduction, TchError, Tensor};
 pub struct NNConfig {
     /// The device to use.
     pub device: Device,
-    /// The precision to use.
-    pub kind: Kind,
     /// The number of residual blocks.
     pub residual_blocks: usize,
     /// The number of channels in the residual blocks.
@@ -32,12 +30,8 @@ where
     G: Game,
 {
     config: NNConfig,
-    /// The model using FP32 weights.
     master: Model<G>,
-    /// The model using various precision weights.
-    cloned: Model<G>,
     vs_master: VarStore,
-    vs_cloned: VarStore,
 }
 
 impl<G> NN<G>
@@ -46,7 +40,6 @@ where
 {
     pub fn new(config: NNConfig) -> Self {
         let vs_master = VarStore::new(config.device);
-        let mut vs_cloned = VarStore::new(config.device);
 
         let master = Model::<G>::new(
             &vs_master.root(),
@@ -58,39 +51,11 @@ where
                 fc1_channels: config.fc1_channels,
             },
         );
-        let cloned = Model::<G>::new(
-            &vs_cloned.root(),
-            ModelConfig {
-                kind: config.kind,
-                residual_blocks: config.residual_blocks,
-                residual_block_channels: config.residual_block_channels,
-                fc0_channels: config.fc0_channels,
-                fc1_channels: config.fc1_channels,
-            },
-        );
-
-        match config.kind {
-            Kind::Half => {
-                vs_cloned.half();
-            }
-            Kind::Double => {
-                vs_cloned.double();
-            }
-            Kind::BFloat16 => {
-                vs_cloned.bfloat16();
-            }
-            _ => {}
-        }
-
-        // copy the weights from the master model to the cloned model once
-        vs_cloned.copy(&vs_master).unwrap();
 
         Self {
             config,
             master,
-            cloned,
             vs_master,
-            vs_cloned,
         }
     }
 
@@ -104,33 +69,15 @@ where
         &self.master
     }
 
-    /// Returns the cloned model.
-    pub fn cloned(&self) -> &Model<G> {
-        &self.cloned
-    }
-
     /// Returns the master variable store.
     pub fn vs_master(&self) -> &VarStore {
         &self.vs_master
-    }
-
-    /// Returns the cloned variable store.
-    pub fn vs_cloned(&self) -> &VarStore {
-        &self.vs_cloned
     }
 
     /// Loads the weights from the given stream.
     /// Note that the weights are loaded into the master model and then copied to the cloned model.
     pub fn load_weights(&mut self, weights: impl Read + Seek) -> Result<(), TchError> {
         self.vs_master.load_from_stream(weights)?;
-        self.vs_cloned.copy(&self.vs_master)?;
-
-        Ok(())
-    }
-
-    /// Copies the weights from the master model to the cloned model.
-    pub fn copy_weights_to_cloned(&mut self) -> Result<(), TchError> {
-        self.vs_cloned.copy(&self.vs_master)?;
 
         Ok(())
     }
@@ -147,7 +94,7 @@ where
     {
         let input = self.encode_input(batch_size, game_iter);
 
-        self.cloned.forward(&input, train)
+        self.master.forward(&input, train)
     }
 
     /// Computes the policy for the given batch.
@@ -162,7 +109,7 @@ where
     {
         let input = self.encode_input(batch_size, game_iter);
 
-        self.cloned.forward_pi(&input, train)
+        self.master.forward_pi(&input, train)
     }
 
     /// Computes the value and policy loss for the given batch.
@@ -188,39 +135,14 @@ where
             .view([-1, G::POSSIBLE_ACTION_COUNT as i64])
             .to_kind(Kind::Float);
 
-        let v_loss = v.mse_loss(&z_target, Reduction::Mean);
+        // let v_loss = v.mse_loss(&z_target, Reduction::Mean);
+        let v_loss = (v - z_target)
+            .pow(&Tensor::from_slice(&[2f32]).to(self.config.device))
+            .mean(None);
         let pi_loss =
             pi.cross_entropy_loss::<&Tensor>(&policy_target, None, Reduction::Mean, -100, 0.0);
 
         (v_loss, pi_loss)
-    }
-
-    /// Runs a backward pass on the master model to ensure that all trainable parameters have a gradient.
-    pub fn run_backward_on_master<'g>(
-        &self,
-        batch_size: usize,
-        game_iter: impl Iterator<Item = &'g G>,
-        z_iter: impl Iterator<Item = f32>,
-        policy_iter: impl Iterator<Item = &'g [f32]>,
-    ) where
-        G: 'g,
-    {
-        let input = self.encode_input(batch_size, game_iter);
-        let (v, pi) = self.master.forward(&input, true);
-        let (z_target, policy_target) = self.encode_targets(batch_size, z_iter, policy_iter);
-
-        let z_target = z_target.view([-1, 1]).to_kind(Kind::Float);
-        let policy_target = policy_target
-            .view([-1, G::POSSIBLE_ACTION_COUNT as i64])
-            .to_kind(Kind::Float);
-
-        let v_loss = v.mse_loss(&z_target, Reduction::Mean);
-        let pi_loss =
-            pi.cross_entropy_loss::<&Tensor>(&policy_target, None, Reduction::Mean, -100, 0.0);
-
-        let loss = &v_loss + &pi_loss;
-
-        loss.backward();
     }
 
     /// Encodes the input for the given batch.

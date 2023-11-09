@@ -2,7 +2,7 @@ use crate::NN;
 use game::Game;
 use tch::{
     nn::{Optimizer, OptimizerConfig},
-    Kind, TchError, Tensor,
+    TchError,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -24,9 +24,6 @@ where
     config: NNOptimizerConfig,
     nn: NN<G>,
     optimizer: Optimizer,
-    gradient_scale: f32,
-    step_count: usize,
-    master_grad_created: bool,
 }
 
 impl<G> NNOptimizer<G>
@@ -45,10 +42,6 @@ where
             config,
             nn,
             optimizer,
-            // default value, but can be changed
-            gradient_scale: (2 << 15) as f32,
-            step_count: 0,
-            master_grad_created: false,
         })
     }
 
@@ -69,9 +62,9 @@ where
     pub fn step<'g>(
         &mut self,
         batch_size: usize,
-        game_iter: impl Iterator<Item = &'g G> + Clone,
-        z_iter: impl Iterator<Item = f32> + Clone,
-        policy_iter: impl Iterator<Item = &'g [f32]> + Clone,
+        game_iter: impl Iterator<Item = &'g G>,
+        z_iter: impl Iterator<Item = f32>,
+        policy_iter: impl Iterator<Item = &'g [f32]>,
     ) -> (f32, f32, f32)
     where
         G: 'g,
@@ -80,88 +73,18 @@ where
             return (0f32, 0f32, 0f32);
         }
 
-        if !self.master_grad_created {
-            self.nn.run_backward_on_master(
-                1,
-                std::iter::once(game_iter.clone().next().unwrap()),
-                std::iter::once(z_iter.clone().next().unwrap()),
-                std::iter::once(policy_iter.clone().next().unwrap()),
-            );
-            self.master_grad_created = true;
-        }
-
         let (v_loss, pi_loss) = self
             .nn
             .loss(true, batch_size, game_iter, z_iter, policy_iter);
         let loss = &v_loss + &pi_loss;
-        let gradient_scale = Tensor::from_slice(&[self.gradient_scale]).to(self.nn.config().device);
-        let gradient_scale_inv =
-            Tensor::from_slice(&[1f32 / self.gradient_scale]).to(self.nn.config().device);
-        let scaled_loss = &loss * &gradient_scale;
 
-        // zero out gradients for fp16 weights
-        for (_, param) in &mut self.nn.vs_cloned().variables() {
-            param.zero_grad();
-        }
+        self.optimizer.zero_grad();
 
-        // compute gradients for fp16 weights
-        scaled_loss.backward();
+        loss.backward();
 
-        let mut skip_update = false;
-
-        for (_, param) in &self.nn.vs_cloned().variables() {
-            let grad = param.grad();
-
-            if !grad.defined() {
-                continue;
-            }
-
-            if (grad.isinf().any().int64_value(&[]) != 0)
-                || (grad.isnan().any().int64_value(&[]) != 0)
-            {
-                // inf or nan detected, use lower gradient scale and skip weight update
-                self.gradient_scale *= 0.5f32;
-                self.step_count = 0;
-                skip_update = true;
-
-                break;
-            }
-        }
-
-        if !skip_update {
-            // copy unscaled gradients into master
-            let params_cloned = self.nn.vs_cloned().variables();
-
-            for (param_name, param) in self.nn.vs_master().variables() {
-                let grad = param.grad();
-
-                if !grad.defined() {
-                    continue;
-                }
-
-                let param_cloned = params_cloned.get(&param_name).unwrap();
-                let grad_cloned = param_cloned.grad();
-                let mut grad_master = param.grad();
-
-                grad_master
-                    .copy_(&(grad_cloned.detach().to_kind(Kind::Float) * &gradient_scale_inv));
-            }
-
-            // now gradients are prepared for fp32 weights, run optimizer
-            self.optimizer
-                .clip_grad_norm(self.config.gradient_clip_norm);
-            self.optimizer.step();
-            self.step_count += 1;
-
-            if self.config.gradient_scale_update_interval <= self.step_count {
-                // increase gradient scale
-                self.gradient_scale *= 2f32;
-                self.step_count = 0;
-            }
-
-            // update fp16 weights
-            self.nn.copy_weights_to_cloned().unwrap();
-        }
+        self.optimizer
+            .clip_grad_norm(self.config.gradient_clip_norm);
+        self.optimizer.step();
 
         (
             f32::try_from(loss).unwrap(),

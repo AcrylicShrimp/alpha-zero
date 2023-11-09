@@ -24,7 +24,6 @@ fn main() {
         mcts_executor_config: MCTSExecutorConfig { num_threads: None },
         nn_config: NNConfig {
             device,
-            kind: Kind::Float,
             residual_blocks: 3,
             residual_block_channels: 64,
             fc0_channels: 128,

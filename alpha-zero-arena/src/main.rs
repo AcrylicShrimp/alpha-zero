@@ -4,7 +4,7 @@ use arena::Arena;
 use game::games::Gomoku9;
 use nn::{NNConfig, NN};
 use std::io::Cursor;
-use tch::{Device, Kind};
+use tch::Device;
 
 fn main() {
     let device = if tch::Cuda::is_available() {
@@ -20,7 +20,6 @@ fn main() {
 
     let mut nn = NN::new(NNConfig {
         device,
-        kind: Kind::Float,
         residual_blocks: 7,
         residual_block_channels: 256,
         fc0_channels: 512,
