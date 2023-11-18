@@ -97,7 +97,7 @@ where
         let gradient_scale = Tensor::from_slice(&[self.gradient_scale]).to(self.nn.config().device);
         let gradient_scale_inv =
             Tensor::from_slice(&[1f32 / self.gradient_scale]).to(self.nn.config().device);
-        let scaled_loss = (&loss * &gradient_scale).to_kind(self.nn.config().kind);
+        let scaled_loss = &loss * &gradient_scale;
 
         // zero out gradients for fp16 weights
         for (_, param) in &mut self.nn.vs_cloned().variables() {
