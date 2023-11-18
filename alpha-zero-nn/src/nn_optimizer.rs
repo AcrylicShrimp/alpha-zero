@@ -10,6 +10,8 @@ use tch::{
 pub struct NNOptimizerConfig {
     /// The learning rate.
     pub lr: f64,
+    /// The weight decay.
+    pub weight_decay: f64,
     /// The maximum gradient norm.
     pub gradient_clip_norm: f64,
     /// The number of training steps after which the gradient scale is updated.
@@ -39,7 +41,8 @@ where
         nn: NN<G>,
         optimizer: impl OptimizerConfig,
     ) -> Result<Self, TchError> {
-        let optimizer = optimizer.build(&nn.vs_master(), config.lr)?;
+        let mut optimizer = optimizer.build(&nn.vs_master(), config.lr)?;
+        optimizer.set_weight_decay(config.weight_decay);
 
         Ok(Self {
             config,
