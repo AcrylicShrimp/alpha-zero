@@ -19,16 +19,16 @@ fn main() {
         Device::Cpu
     };
 
-    let mut trainer = Trainer::<game::games::TicTacToe>::new(TrainerConfig {
+    let mut trainer = Trainer::<game::games::Gomoku9>::new(TrainerConfig {
         device,
         mcts_executor_config: MCTSExecutorConfig { num_threads: None },
         nn_config: NNConfig {
             device,
-            kind: Kind::Float,
+            kind: Kind::Half,
             residual_blocks: 3,
-            residual_block_channels: 64,
-            fc0_channels: 128,
-            fc1_channels: 128,
+            residual_block_channels: 128,
+            fc0_channels: 256,
+            fc1_channels: 256,
         },
         nn_optimizer_config: NNOptimizerConfig {
             lr: 0.001f64,
@@ -36,20 +36,20 @@ fn main() {
             gradient_clip_norm: 5f64,
             gradient_scale_update_interval: 2000,
         },
-        replay_buffer_size: 500000,
-        episodes: 10,
-        mcts_count: 25,
+        replay_buffer_size: 50000,
+        episodes: 100,
+        mcts_count: 100,
         batch_size: 4,
         c_puct: 1f32,
         alpha: 0.03f32,
         epsilon: 0.25f32,
         temperature: 1f32,
         temperature_threshold: 30,
-        parameter_update_count: 1600,
-        parameter_update_batch_size: 128,
-        match_count: 10,
+        parameter_update_count: 400,
+        parameter_update_batch_size: 64,
+        match_count: 100,
         nn_save_config: Some(TrainerNNSaveConfig {
-            path: "saves/tictactoe-adam-fp32".into(),
+            path: "saves/gomoku-adam-fp16".into(),
             backup_interval: Some(100),
         }),
     })
